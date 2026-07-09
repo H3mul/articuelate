@@ -1,86 +1,104 @@
-use egui::Ui;
+use egui::{Color32, Frame, Margin, RichText, Sense, Ui};
 
 use crate::cue::{Cue, CueStatus, FollowMode};
+use crate::panels::style;
 
 /// Renders the main cuelist panel — the top-left data grid.
 pub fn render(ui: &mut Ui, cues: &[Cue], selected_index: &mut usize) {
-    egui_extras::StripBuilder::new(ui)
-        .sizes(egui_extras::Size::remainder(), cues.len().max(1))
-        .vertical(|mut strip| {
-            if cues.is_empty() {
-                strip.cell(|ui| {
-                    ui.label("No cues loaded. Add a cue to get started.");
-                });
-                return;
+    if cues.is_empty() {
+        style::show_card(ui, None, |ui| {
+            ui.label(
+                RichText::new("No cues loaded. Add a cue to get started.")
+                    .weak(),
+            );
+        });
+        return;
+    }
+
+    for (i, cue) in cues.iter().enumerate() {
+        render_cue_card(ui, cue, i, selected_index);
+    }
+}
+
+/// Renders a single cue as a card. Selected cues get a tinted fill and a
+/// stronger outline, indented cues get a left margin.
+fn render_cue_card(ui: &mut Ui, cue: &Cue, index: usize, selected_index: &mut usize) {
+    let selected = index == *selected_index;
+    let visuals = ui.style().visuals.clone();
+
+    let fill = if selected {
+        visuals.selection.bg_fill
+    } else {
+        visuals.widgets.noninteractive.bg_fill
+    };
+
+    let stroke_color = if selected {
+        visuals.selection.stroke.color
+    } else {
+        visuals.widgets.noninteractive.bg_stroke.color
+    };
+
+    let indent = if cue.indented { 20.0 } else { 0.0 };
+
+    let frame = Frame {
+        fill,
+        stroke: egui::Stroke::new(if selected { 1.5 } else { 1.0 }, stroke_color),
+        inner_margin: Margin::symmetric((4.0 + indent) as i8, 6),
+        corner_radius: egui::CornerRadius::same(6),
+        ..Default::default()
+    };
+
+    frame.show(ui, |ui| {
+        ui.horizontal(|ui| {
+            // Status icon
+            let (icon, color) = match cue.status {
+                CueStatus::Playing => ("▶", Color32::from_rgb(80, 200, 120)),
+                CueStatus::Paused => ("⏸", Color32::from_rgb(230, 200, 80)),
+                CueStatus::Complete => ("✓", Color32::from_rgb(120, 120, 120)),
+                CueStatus::Ready => ("○", visuals.text_color()),
+            };
+            ui.colored_label(color, icon);
+
+            // Number + Name
+            ui.strong(format!("CUE {}", cue.number));
+            ui.label(&cue.name);
+
+            // Follow-mode badge
+            let (badge, badge_color) = match cue.follow_mode {
+                FollowMode::Manual => (None, Color32::PLACEHOLDER),
+                FollowMode::AutoContinue => (
+                    Some(" (Auto-Continue)"),
+                    Color32::from_rgb(120, 180, 230),
+                ),
+                FollowMode::AutoFollow => (
+                    Some(" (Auto-Follow)"),
+                    Color32::from_rgb(200, 140, 230),
+                ),
+            };
+            if let Some(b) = badge {
+                ui.colored_label(badge_color, b);
             }
 
-            for (i, cue) in cues.iter().enumerate() {
-                strip.cell(|ui| {
-                    let indent = if cue.indented { 20.0 } else { 0.0 };
-
-                    let selected = i == *selected_index;
-                    let bg = if selected {
-                        ui.style().visuals.selection.bg_fill
-                    } else if i % 2 == 0 {
-                        ui.style().visuals.panel_fill
-                    } else {
-                        ui.style().visuals.faint_bg_color
-                    };
-
-                    let frame = egui::Frame {
-                        fill: bg,
-                        inner_margin: egui::Margin::symmetric((4.0 + indent) as i8, 2),
-                        ..Default::default()
-                    };
-
-                    frame.show(ui, |ui| {
-                        ui.horizontal(|ui| {
-                            // Status icon
-                            let icon = match cue.status {
-                                CueStatus::Playing => "▶",
-                                CueStatus::Paused => "⏸",
-                                CueStatus::Complete => "✓",
-                                CueStatus::Ready => "○",
-                            };
-                            ui.label(icon);
-
-                            // Number + Name
-                            ui.strong(format!("CUE {}", cue.number));
-                            ui.label(&cue.name);
-
-                            // Follow-mode badge
-                            let badge = match cue.follow_mode {
-                                FollowMode::Manual => "",
-                                FollowMode::AutoContinue => " (Auto-Continue)",
-                                FollowMode::AutoFollow => " (Auto-Follow)",
-                            };
-                            if !badge.is_empty() {
-                                ui.colored_label(egui::Color32::LIGHT_BLUE, badge);
-                            }
-
-                            // Click to select
-                            let response = ui.interact(
-                                ui.min_rect(),
-                                ui.id().with("cue").with(i),
-                                egui::Sense::click(),
-                            );
-                            if response.clicked() {
-                                *selected_index = i;
-                            }
-                        });
-                    });
-                });
+            // Click anywhere on the card to select.
+            let response = ui.interact(
+                ui.min_rect(),
+                ui.id().with("cue").with(index),
+                Sense::click(),
+            );
+            if response.clicked() {
+                *selected_index = index;
             }
         });
+    });
 }
 
 /// Renders the cuelist panel header row (used inside a containing panel).
 pub fn render_header(ui: &mut Ui) {
     ui.horizontal(|ui| {
-        ui.label(egui::RichText::new("MAIN CUELIST").strong());
+        ui.label(RichText::new("MAIN CUELIST").strong().size(14.0));
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-            ui.label(format!("{} cues", 0));
+            ui.label(RichText::new("0 cues").weak());
         });
     });
-    ui.separator();
+    ui.add_space(6.0);
 }

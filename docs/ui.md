@@ -8,7 +8,6 @@ The window is divided into five main regions: a global toolbar, three primary in
 
 ASCII Layout Schematic
 
-```
 +-----------------------------------------------------------------------------+
 |  [||] (Pause)   [>] (GO)   [<] (BACK)   [Search: "wind" ]      [ PANIC ]    | <- TOOLBAR
 +----------------------------------------------------+------------------------+
@@ -29,14 +28,14 @@ ASCII Layout Schematic
 |  [Context: Task 1.1 - Wind_Loop]                   |                        |
 |  Target: BGM         Property: Volume              |                        |
 |  Target Vol: [-24]   Duration: [3.0]               |                        |
-|  Curve: (Linear)     Output: [Main L/R]            |                        |
+|  Matrix: [In L -> Out 1, 2] [In R -> Out 3, 4]     |                        |
 |                                                    |                        |
 |              DETAIL PANEL                          |                        |
 |         (Bottom 1/3 of Left Pane)                  |                        |
 +----------------------------------------------------+------------------------+
-|  STATUS: Connected (USB Audio Device)              |  CPU: 4%   DSP: 12%    | <- STATUS BAR
+|  STATUS: Connected (ASIO: Focusrite USB)           |  CPU: 4%   DSP: 12%    | <- STATUS BAR
 +-----------------------------------------------------------------------------+
-```
+
 
 2. Component Breakdown
 
@@ -64,34 +63,36 @@ The inspector view, occupying the bottom 1/3 of the left-hand split. It reactive
 
 Cue Selected: Displays trigger constraints (Pre-wait, Post-wait), designer notes, and base "Inherit From" target data.
 
-Task Selected: Displays explicit parameter editing controls (e.g., volume sliders, fade curve drop-downs, routing targets, and specific property overrides).
+Task Selected: Displays explicit parameter editing controls (e.g., volume sliders, custom fade curves, and advanced multi-channel matrix routing).
 
-Nothing Selected: Reverts to Global Show settings (e.g., master show volume, default output devices).
+Nothing Selected: Reverts to Global Show settings (e.g., master show volume, default ASIO/WASAPI devices).
 
 D. Currently Playing Media Side Panel (Right Panel)
 
 A dedicated, persistent view of the audio engine's live state.
 
-Active Layer Telemetry: Iterates over the Vec<Cue> and displays any cue currently holding an active Kira audio handle.
+Active Layer Telemetry: Iterates over active engine states to display currently playing cues.
 
-Live Scrubbing: Provides visual progress bars for temporal audio playback, allowing the operator to click and drag to scrub the playhead dynamically (where applicable).
+Live Scrubbing: Provides visual progress bars for temporal audio playback, allowing the operator to click and drag to scrub the playhead dynamically.
 
-Live Meters: Real-time volume meters for the specific playing assets.
+Live Meters: Real-time volume meters for the specific playing assets, operating at high refresh rates.
 
-Manual Override: Allows operators to manually intervene (e.g., dragging down the volume of a specific layer on the fly if an actor is speaking too quietly).
+Manual Override: Allows operators to manually intervene (e.g., dragging down the volume of a specific layer on the fly).
 
 E. Status Bar (Bottom)
 
 System health and environment telemetry.
 
-Hardware Status: Displays the currently connected audio interface. If the interface disconnects (e.g., USB unplugged), this turns red and indicates the failover state.
+Hardware Status: Displays the active low-latency driver.
 
-Performance Metrics: CPU and DSP thread usage, ensuring the operator knows the engine has enough headroom for the upcoming sequence.
+Performance Metrics: CPU and DSP thread usage, essential for monitoring custom audio pipeline headroom.
 
-3. UI Framework & Data Binding Notes
+3. UI Framework & Data Binding Notes (Slint & Lock-Free Ringbuffers)
 
-In our Rust/Iced framework, this 3-panel layout remains highly performant:
+With the pivot to Slint for the frontend and a custom cpal backend, the UI layer interacts with the audio engine through strict boundaries:
 
-Vertical/Horizontal Panes: Handled natively using Iced's Column and Row layout primitives, with optional Space or custom splitter widgets to allow user-adjustable pane resizing.
+Declarative Layouts: The 3-panel layout is defined purely in .slint markup (using VerticalBox, HorizontalBox, and styling properties). This abstracts all CSS-like design logic away from the Rust execution code.
 
-Side Panel Efficiency: Because Kira's audio thread handles the actual DSP, the right-hand media panel simply polls or subscribes to a message stream from the audio thread at ~30-60fps to update the visual meters and playheads, ensuring the UI thread never blocks audio output.
+Asynchronous Command Pushing: When an operator clicks "GO" or drags a volume slider in the Slint UI, the Rust backend captures the callback and pushes a struct into a ringbuf::Producer. The cpal audio thread instantly consumes this from the ringbuf::Consumer without acquiring locks.
+
+Reactive Telemetry (The Media Panel): To display smooth 60fps audio meters without bogging down the UI, the audio thread pushes peak volume data into a return-path ringbuffer. The Slint frontend reads this buffer via a lightweight Timer polling mechanism and updates bound reactive properties, which naturally redraws the UI components in isolation.
