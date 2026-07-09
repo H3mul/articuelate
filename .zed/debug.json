@@ -3,20 +3,26 @@
     "label": "Debug Articuelate",
     "adapter": "CodeLLDB",
     "request": "launch",
-    "program": "target/debug/articuelate",
+    "program": "target/debug/articuelate.exe",
     "args": [],
     "cwd": ".",
     "terminal": "integrated",
-    "preLaunchTask": "cargo build"
+    "build": {
+      "command": "cargo",
+      "args": ["build"]
+    }
   },
   {
     "label": "Debug Articuelate (Release)",
     "adapter": "CodeLLDB",
     "request": "launch",
-    "program": "target/release/articuelate",
+    "program": "target/release/articuelate.exe",
     "args": [],
     "cwd": ".",
     "terminal": "integrated",
-    "preLaunchTask": "cargo build --release"
+    "build": {
+      "command": "cargo",
+      "args": ["build", "--release"]
+    }
   }
 ]
