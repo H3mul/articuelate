@@ -1,232 +1,282 @@
 mod cue;
 mod engine;
-mod panels;
+
+use std::cell::RefCell;
+use std::rc::Rc;
+
+use slint::{ModelRc, SharedString, VecModel};
 
 use cue::{Cue, CueStatus, FollowMode};
-use elegance::Theme;
-use engine::AudioEngine;
-use egui_tiles::{Behavior, TileId, Tiles, Tree, UiResponse};
+use engine::{ActivePlayback, AudioEngine};
+
+slint::include_modules!();
 
 // ---------------------------------------------------------------------------
-// Pane definition
+// Sample data (placeholder show — will later be loaded via Serde).
 
-#[derive(Debug, Clone, PartialEq)]
-enum Pane {
-    Cuelist,
-    Detail,
-    Media,
-}
-
-fn build_tree() -> Tree<Pane> {
-    let mut tiles = Tiles::default();
-
-    // Leaf panes
-    let cuelist_pane = tiles.insert_pane(Pane::Cuelist);
-    let detail_pane = tiles.insert_pane(Pane::Detail);
-    let media_pane = tiles.insert_pane(Pane::Media);
-
-    // Wrap each pane in a single-tab tab container — this is the foundation
-    // for the "multiple tabs" requirement on the detail and sidebar panels.
-    let cuelist = tiles.insert_tab_tile(vec![cuelist_pane]);
-    let detail = tiles.insert_tab_tile(vec![detail_pane]);
-    let media = tiles.insert_tab_tile(vec![media_pane]);
-
-    // Left side: vertical split (cuelist on top, detail on the bottom).
-    let left = tiles.insert_vertical_tile(vec![cuelist, detail]);
-
-    // Root: horizontal split (left side, media on the right).
-    let root = tiles.insert_horizontal_tile(vec![left, media]);
-
-    Tree::new("articuelate_tree", root, tiles)
+fn sample_cues() -> Vec<Cue> {
+    vec![
+        Cue {
+            number: 1.0,
+            name: "Storm Intro".into(),
+            status: CueStatus::Ready,
+            follow_mode: FollowMode::Manual,
+            tasks: vec![
+                cue::Task {
+                    target_name: "BGM".into(),
+                    property: "Volume".into(),
+                    target_value: -24.0,
+                    duration_secs: 3.0,
+                    curve: cue::FadeCurve::Linear,
+                    output: cue::OutputTarget {
+                        name: "Main L/R".into(),
+                    },
+                },
+                cue::Task {
+                    target_name: "Player".into(),
+                    property: "Play".into(),
+                    target_value: 0.0,
+                    duration_secs: 0.0,
+                    curve: cue::FadeCurve::Linear,
+                    output: cue::OutputTarget {
+                        name: "Main L/R".into(),
+                    },
+                },
+            ],
+            indented: false,
+            audio_file_name: Some("Wind_Loop.wav".into()),
+            ..Default::default()
+        },
+        Cue {
+            number: 2.0,
+            name: "Thunder Strike".into(),
+            status: CueStatus::Ready,
+            follow_mode: FollowMode::Manual,
+            tasks: vec![],
+            indented: true,
+            audio_file_name: Some("Thunder.wav".into()),
+            ..Default::default()
+        },
+        Cue {
+            number: 3.0,
+            name: "Storm Outro".into(),
+            status: CueStatus::Ready,
+            follow_mode: FollowMode::AutoFollow,
+            tasks: vec![],
+            indented: true,
+            ..Default::default()
+        },
+    ]
 }
 
 // ---------------------------------------------------------------------------
-// Tile behavior — controls how each pane is rendered and styled.
+// Display helpers (flatten Rust data into the plain Slint structs).
 
-struct AppBehavior<'a> {
-    engine: &'a mut AudioEngine,
-    cues: &'a mut Vec<Cue>,
-    selected_cue_index: &'a mut usize,
-    selected_task_index: &'a mut Option<usize>,
+fn status_icon(s: CueStatus) -> &'static str {
+    match s {
+        CueStatus::Playing => "▶",
+        CueStatus::Paused => "⏸",
+        CueStatus::Complete => "✓",
+        CueStatus::Ready => "○",
+    }
 }
 
-impl<'a> Behavior<Pane> for AppBehavior<'a> {
-    fn pane_ui(
-        &mut self,
-        ui: &mut egui::Ui,
-        _tile_id: TileId,
-        pane: &mut Pane,
-    ) -> UiResponse {
-        match pane {
-            Pane::Cuelist => {
-                panels::cuelist::render_header(ui);
-                ui.add_space(4.0);
-                egui::ScrollArea::vertical()
-                    .auto_shrink([false; 2])
-                    .show(ui, |ui| {
-                        panels::cuelist::render(ui, self.cues, self.selected_cue_index);
-                    });
+fn follow_text(f: FollowMode) -> &'static str {
+    match f {
+        FollowMode::Manual => "",
+        FollowMode::AutoContinue => " (Auto-Continue)",
+        FollowMode::AutoFollow => " (Auto-Follow)",
+    }
+}
+
+fn to_cue_item(cue: &Cue, selected: bool) -> CueItem {
+    CueItem {
+        number: SharedString::from(format!("{:.1}", cue.number)),
+        name: SharedString::from(cue.name.as_str()),
+        status: SharedString::from(status_icon(cue.status)),
+        follow: SharedString::from(follow_text(cue.follow_mode)),
+        indented: cue.indented,
+        selected,
+    }
+}
+
+fn to_playback_item(pb: &ActivePlayback) -> PlaybackItem {
+    PlaybackItem {
+        cue_number: SharedString::from(format!("{:.1}", pb.cue_number)),
+        label: SharedString::from(pb.label.as_str()),
+        volume_db: SharedString::from(format!("{:.0} dB", pb.volume_db)),
+        progress: pb.progress,
+    }
+}
+
+/// Builds a barebones text description of the current selection for the
+/// detail inspector panel.
+fn describe(cues: &[Cue], idx: usize) -> String {
+    match cues.get(idx) {
+        Some(cue) => {
+            let mut s = String::new();
+            s.push_str(&format!("Cue {:.1} – {}\n", cue.number, cue.name));
+            s.push_str(&format!("Status: {:?}\n", cue.status));
+            s.push_str(&format!("Follow: {:?}\n", cue.follow_mode));
+            s.push_str(&format!(
+                "Pre-wait: {:.1}s   Post-wait: {:.1}s\n",
+                cue.pre_wait_secs, cue.post_wait_secs
+            ));
+            if !cue.notes.is_empty() {
+                s.push_str(&format!("Notes: {}\n", cue.notes));
             }
-            Pane::Detail => {
-                let selected_cue = self.cues.get(*self.selected_cue_index);
-                let selected_task = selected_cue.and_then(|cue| {
-                    self.selected_task_index.map(|i| &cue.tasks[i])
-                });
-                panels::detail::render(ui, selected_cue, selected_task);
+            if !cue.tasks.is_empty() {
+                s.push_str("Tasks:\n");
+                for t in &cue.tasks {
+                    s.push_str(&format!(
+                        "  - {} {} -> {:.1} ({:.1}s, {:?})\n",
+                        t.target_name, t.property, t.target_value, t.duration_secs, t.curve
+                    ));
+                }
             }
-            Pane::Media => {
-                let playbacks = self.engine.active_playbacks();
-                panels::media::render(ui, &playbacks);
-            }
+            s
         }
-        UiResponse::None
-    }
-
-    fn tab_title_for_pane(&mut self, pane: &Pane) -> egui::WidgetText {
-        match pane {
-            Pane::Cuelist => "Main Cuelist".into(),
-            Pane::Detail => "Detail Inspector".into(),
-            Pane::Media => "Active Media".into(),
-        }
-    }
-
-    // Slightly more spacious / modern tab bar.
-    fn tab_bar_height(&self, _style: &egui::Style) -> f32 {
-        30.0
-    }
-
-    // Visible gap between tiles for a clearer separation.
-    fn gap_width(&self, _style: &egui::Style) -> f32 {
-        4.0
+        None => "Nothing selected — adjust the global show defaults.".to_string(),
     }
 }
 
 // ---------------------------------------------------------------------------
-// Application state
+// Shared mutable application state.
 
-struct ArticuelateApp {
-    engine: AudioEngine,
+struct AppState {
     cues: Vec<Cue>,
-    selected_cue_index: usize,
-    selected_task_index: Option<usize>,
-    search_query: String,
-    tree: Tree<Pane>,
+    selected_index: usize,
+    search: String,
+    engine: AudioEngine,
 }
 
-impl Default for ArticuelateApp {
-    fn default() -> Self {
-        let cues = vec![
-            Cue {
-                number: 1.0,
-                name: "Storm Intro".into(),
-                status: CueStatus::Ready,
-                follow_mode: FollowMode::Manual,
-                tasks: vec![
-                    cue::Task {
-                        target_name: "BGM".into(),
-                        property: "Volume".into(),
-                        target_value: -24.0,
-                        duration_secs: 3.0,
-                        curve: cue::FadeCurve::Linear,
-                        output: cue::OutputTarget {
-                            name: "Main L/R".into(),
-                        },
-                    },
-                    cue::Task {
-                        target_name: "Player".into(),
-                        property: "Play".into(),
-                        target_value: 0.0,
-                        duration_secs: 0.0,
-                        curve: cue::FadeCurve::Linear,
-                        output: cue::OutputTarget {
-                            name: "Main L/R".into(),
-                        },
-                    },
-                ],
-                indented: false,
-                audio_file_name: Some("Wind_Loop.wav".into()),
-                ..Default::default()
-            },
-            Cue {
-                number: 2.0,
-                name: "Thunder Strike".into(),
-                status: CueStatus::Ready,
-                follow_mode: FollowMode::Manual,
-                tasks: vec![],
-                indented: true,
-                audio_file_name: Some("Thunder.wav".into()),
-                ..Default::default()
-            },
-            Cue {
-                number: 3.0,
-                name: "Storm Outro".into(),
-                status: CueStatus::Ready,
-                follow_mode: FollowMode::AutoFollow,
-                tasks: vec![],
-                indented: true,
-                ..Default::default()
-            },
-        ];
+/// Push the current `AppState` into the Slint reactive properties.
+fn refresh(
+    ui: &MainWindow,
+    state: &Rc<RefCell<AppState>>,
+    cues_model: &Rc<VecModel<CueItem>>,
+    playbacks_model: &Rc<VecModel<PlaybackItem>>,
+) {
+    let s = state.borrow();
 
-        Self {
-            engine: AudioEngine::new(),
-            cues,
-            selected_cue_index: 0,
-            selected_task_index: None,
-            search_query: String::new(),
-            tree: build_tree(),
-        }
-    }
+    // Cuelist (filtered by the search query).
+    let q = s.search.to_lowercase();
+    let filtered: Vec<CueItem> = s
+        .cues
+        .iter()
+        .enumerate()
+        .filter(|(_, c)| {
+            q.is_empty()
+                || c.name.to_lowercase().contains(&q)
+                || c.audio_file_name
+                    .as_ref()
+                    .map_or(false, |f| f.to_lowercase().contains(&q))
+        })
+        .map(|(i, c)| to_cue_item(c, i == s.selected_index))
+        .collect();
+    cues_model.set_vec(filtered);
+
+    // Detail inspector.
+    ui.set_detail_text(SharedString::from(describe(&s.cues, s.selected_index)));
+
+    // Active media telemetry.
+    let pbs: Vec<PlaybackItem> = s.engine.active_playbacks().iter().map(to_playback_item).collect();
+    playbacks_model.set_vec(pbs);
+
+    // Status bar.
+    ui.set_status_text(SharedString::from(format!(
+        "{} ({})    CPU: {:.0}%   DSP: {:.0}%",
+        if s.engine.is_connected() {
+            "Connected"
+        } else {
+            "Disconnected"
+        },
+        s.engine.audio_device_name(),
+        s.engine.cpu_usage(),
+        s.engine.dsp_usage(),
+    )));
 }
 
 // ---------------------------------------------------------------------------
-// eframe::App implementation
+// Entry point.
 
-impl eframe::App for ArticuelateApp {
-    fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
-        // 1. Install the egui-elegance theme (dark, slate-blue) once per frame.
-        //    This rewrites `egui::Style` so built-in panels and widgets inherit
-        //    the modern palette, corner radius, padding and focus ring.
-        Theme::slate().install(ui.ctx());
+fn main() -> Result<(), slint::PlatformError> {
+    let state = Rc::new(RefCell::new(AppState {
+        cues: sample_cues(),
+        selected_index: 0,
+        search: String::new(),
+        engine: AudioEngine::new(),
+    }));
 
-        // 2. Toolbar (top).
-        egui::Panel::top("toolbar").show_inside(ui, |ui| {
-            panels::toolbar::render(ui, &mut self.search_query, &mut self.engine);
-        });
+    let ui = MainWindow::new()?;
 
-        // 3. Status bar (bottom).
-        egui::Panel::bottom("status_bar").show_inside(ui, |ui| {
-            panels::status_bar::render(ui, &self.engine);
-        });
+    let cues_model = Rc::new(VecModel::<CueItem>::default());
+    let playbacks_model = Rc::new(VecModel::<PlaybackItem>::default());
+    ui.set_cues(ModelRc::new(cues_model.clone()));
+    ui.set_playbacks(ModelRc::new(playbacks_model.clone()));
 
-        // 4. Dock tree (cuelist + detail + media) — fills the rest.
-        egui::CentralPanel::default().show_inside(ui, |ui| {
-            let mut behavior = AppBehavior {
-                engine: &mut self.engine,
-                cues: &mut self.cues,
-                selected_cue_index: &mut self.selected_cue_index,
-                selected_task_index: &mut self.selected_task_index,
-            };
-            self.tree.ui(&mut behavior, ui);
-        });
-    }
-}
+    refresh(&ui, &state, &cues_model, &playbacks_model);
 
-// ---------------------------------------------------------------------------
-// Entry point
+    // --- Wire callbacks ---
+    let st = state.clone();
+    let ui_w = ui.as_weak();
+    let cm = cues_model.clone();
+    let pm = playbacks_model.clone();
+    ui.on_cue_selected(move |idx| {
+        st.borrow_mut().selected_index = idx as usize;
+        let ui = ui_w.upgrade().unwrap();
+        refresh(&ui, &st, &cm, &pm);
+    });
 
-fn main() -> eframe::Result<()> {
-    let options = eframe::NativeOptions {
-        viewport: egui::ViewportBuilder::default()
-            .with_inner_size([1280.0, 720.0])
-            .with_min_inner_size([800.0, 600.0])
-            .with_title("Articuelate"),
-        ..Default::default()
-    };
+    let st = state.clone();
+    let ui_w = ui.as_weak();
+    let cm = cues_model.clone();
+    let pm = playbacks_model.clone();
+    ui.on_search_changed(move |text| {
+        st.borrow_mut().search = text.to_string();
+        let ui = ui_w.upgrade().unwrap();
+        refresh(&ui, &st, &cm, &pm);
+    });
 
-    eframe::run_native(
-        "Articuelate",
-        options,
-        Box::new(|_cc| Ok(Box::new(ArticuelateApp::default()))),
-    )
+    let st = state.clone();
+    let ui_w = ui.as_weak();
+    let cm = cues_model.clone();
+    let pm = playbacks_model.clone();
+    ui.on_go_clicked(move || {
+        st.borrow_mut().engine.fire_next();
+        let ui = ui_w.upgrade().unwrap();
+        refresh(&ui, &st, &cm, &pm);
+    });
+
+    let st = state.clone();
+    let ui_w = ui.as_weak();
+    let cm = cues_model.clone();
+    let pm = playbacks_model.clone();
+    ui.on_back_clicked(move || {
+        // TODO: step back to the previous cue.
+        let ui = ui_w.upgrade().unwrap();
+        refresh(&ui, &st, &cm, &pm);
+    });
+
+    let st = state.clone();
+    let ui_w = ui.as_weak();
+    let cm = cues_model.clone();
+    let pm = playbacks_model.clone();
+    ui.on_pause_clicked(move || {
+        // TODO: pause the active playback.
+        let ui = ui_w.upgrade().unwrap();
+        refresh(&ui, &st, &cm, &pm);
+    });
+
+    let st = state.clone();
+    let ui_w = ui.as_weak();
+    let cm = cues_model.clone();
+    let pm = playbacks_model.clone();
+    ui.on_panic_clicked(move || {
+        st.borrow_mut().engine.stop_all();
+        let ui = ui_w.upgrade().unwrap();
+        refresh(&ui, &st, &cm, &pm);
+    });
+
+    ui.run()
 }

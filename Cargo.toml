@@ -6,11 +6,10 @@ description = "A modern, cross-platform, open-source audio cue system for profes
 authors = ["H3mul"]
 
 [dependencies]
-eframe = "0.34"
-egui = "0.34"
-egui_extras = "0.34"
-egui_tiles = "0.15"
-egui-elegance = "0.13"
+slint = "1"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 kira = "0.12"
+
+[build-dependencies]
+slint-build = "1"

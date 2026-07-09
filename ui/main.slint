@@ -1,0 +1,140 @@
+// Articuelate — main UI layout (Slint declarative markup).
+//
+// Pure .slint markup describing the 3-panel pro-audio workspace. All styling
+// lives here; the Rust backend only pushes data into the reactive properties
+// and reacts to the callbacks defined below. Built-in std-widgets are used
+// (Button, LineEdit, ListView, ProgressBar, ScrollView) — no custom widgets.
+
+import { Button, LineEdit, ListView, ProgressIndicator, ScrollView, VerticalBox, HorizontalBox } from "std-widgets.slint";
+
+// A single row in the cuelist (mirrors cue::Cue, flattened for display).
+export struct CueItem {
+    number: string,
+    name: string,
+    status: string,
+    follow: string,
+    indented: bool,
+    selected: bool,
+}
+
+// A single active audio layer in the media panel.
+export struct PlaybackItem {
+    cue_number: string,
+    label: string,
+    volume_db: string,
+    progress: float,
+}
+
+export component MainWindow inherits Window {
+    title: "Articuelate";
+    preferred-width: 1280px;
+    preferred-height: 720px;
+    min-width: 800px;
+    min-height: 600px;
+    background: #16181d;
+
+    // --- Reactive data bound from Rust ---
+    in-out property <string> search-text: "";
+    in-out property <string> detail-text: "Nothing selected — adjust the global show defaults.";
+    in-out property <string> status-text: "Connected";
+    in-out property <[CueItem]> cues: [];
+    in-out property <[PlaybackItem]> playbacks: [];
+
+    // --- Callbacks invoked from Rust-declared event handlers ---
+    callback search-changed(string);
+    callback go-clicked;
+    callback back-clicked;
+    callback pause-clicked;
+    callback panic-clicked;
+    callback cue-selected(int);
+
+    VerticalBox {
+        spacing: 0px;
+
+        // ===================== TOOLBAR =====================
+        HorizontalBox {
+            padding: 8px;
+            spacing: 6px;
+            Button { text: "|| PAUSE"; clicked => { root.pause-clicked(); } }
+            Button { text: "> GO"; clicked => { root.go-clicked(); } }
+            Button { text: "< BACK"; clicked => { root.back-clicked(); } }
+            LineEdit {
+                text <=> root.search-text;
+                placeholder-text: "Search cues...";
+                edited => { root.search-changed(self.text); }
+            }
+            HorizontalBox { } // spacer pushing PANIC to the right
+            Button {
+                text: "PANIC";
+                clicked => { root.panic-clicked(); }
+            }
+        }
+
+        // ===================== MAIN AREA =====================
+        HorizontalBox {
+            spacing: 4px;
+            padding: 4px;
+
+            // LEFT: cuelist (top 2/3) + detail (bottom 1/3)
+            VerticalBox {
+                spacing: 4px;
+
+                Text { text: "MAIN CUELIST"; font-weight: 700; }
+
+                ListView {
+                    vertical-stretch: 2;
+                    for cue[idx] in root.cues: Rectangle {
+                        background: cue.selected ? #2d4a7a : #1e222b;
+                        TouchArea {
+                            clicked => { root.cue-selected(idx); }
+                        }
+                        HorizontalLayout {
+                            padding-left: cue.indented ? 24px : 8px;
+                            padding-top: 4px;
+                            padding-bottom: 4px;
+                            padding-right: 8px;
+                            spacing: 6px;
+                            Text { text: cue.status; }
+                            Text { text: "CUE " + cue.number; font-weight: 700; }
+                            Text { text: cue.name; }
+                            Text { text: cue.follow; color: #7a8290; }
+                        }
+                    }
+                }
+
+                Text { text: "DETAIL INSPECTOR"; font-weight: 700; }
+                ScrollView {
+                    vertical-stretch: 1;
+                    Text { text: root.detail-text; }
+                }
+            }
+
+            // RIGHT: active media panel
+            VerticalBox {
+                spacing: 4px;
+                Text { text: "ACTIVE MEDIA"; font-weight: 700; }
+                ListView {
+                    for pb in root.playbacks: VerticalBox {
+                        padding: 6px;
+                        spacing: 2px;
+                        Text {
+                            text: "CUE " + pb.cue_number + "  " + pb.label;
+                            font-weight: 700;
+                        }
+                        HorizontalLayout {
+                            spacing: 6px;
+                            Text { text: "Vol " + pb.volume_db; }
+                            ProgressIndicator { progress: pb.progress; }
+                        }
+                    }
+                }
+            }
+        }
+
+        // ===================== STATUS BAR =====================
+        HorizontalBox {
+            padding: 4px;
+            Text { text: root.status-text; }
+        }
+    }
+}
