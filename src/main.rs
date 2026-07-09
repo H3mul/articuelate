@@ -4,7 +4,7 @@ use iced::{Element, Task, Theme};
 fn main() -> iced::Result {
     iced::application(App::boot, App::update, App::view)
         .title(|_: &App| String::from("Articuelate"))
-        .theme(|_: &App| Theme::Dark)
+        .theme(|_: &App| Theme::TokyoNightStorm)
         .window_size(iced::Size::new(1280.0, 720.0))
         .window(iced::window::Settings {
             min_size: Some(iced::Size::new(800.0, 600.0)),

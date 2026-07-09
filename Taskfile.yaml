@@ -34,3 +34,8 @@ tasks:
     desc: Build release for the current platform
     cmds:
       - cargo build --release
+
+  check:
+    desc: Run cargo check
+    cmds:
+      - cargo check
