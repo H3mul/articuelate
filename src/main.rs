@@ -4,6 +4,60 @@ mod panels;
 
 use cue::{Cue, FollowMode, CueStatus};
 use engine::AudioEngine;
+use egui_dock::{DockArea, DockState, TabViewer};
+
+// ---------------------------------------------------------------------------
+// Tabs definition
+
+#[derive(Debug, Clone, PartialEq)]
+enum Tab {
+    Cuelist,
+    Detail,
+    Media,
+}
+
+struct MyTabViewer<'a> {
+    engine: &'a mut AudioEngine,
+    cues: &'a mut Vec<Cue>,
+    selected_cue_index: &'a mut usize,
+    selected_task_index: &'a mut Option<usize>,
+}
+
+impl<'a> TabViewer for MyTabViewer<'a> {
+    type Tab = Tab;
+
+    fn title(&mut self, tab: &mut Self::Tab) -> egui::WidgetText {
+        match tab {
+            Tab::Cuelist => "Main Cuelist".into(),
+            Tab::Detail => "Detail Inspector".into(),
+            Tab::Media => "Active Media".into(),
+        }
+    }
+
+    fn ui(&mut self, ui: &mut egui::Ui, tab: &mut Self::Tab) {
+        match tab {
+            Tab::Cuelist => {
+                panels::cuelist::render_header(ui);
+                ui.add_space(4.0);
+                egui::ScrollArea::vertical()
+                    .auto_shrink([false; 2])
+                    .show(ui, |ui| {
+                        panels::cuelist::render(ui, self.cues, self.selected_cue_index);
+                    });
+            }
+            Tab::Detail => {
+                let selected_cue = self.cues.get(*self.selected_cue_index);
+                let selected_task = selected_cue
+                    .and_then(|cue| self.selected_task_index.map(|i| &cue.tasks[i]));
+                panels::detail::render(ui, selected_cue, selected_task);
+            }
+            Tab::Media => {
+                let playbacks = self.engine.active_playbacks();
+                panels::media::render(ui, &playbacks);
+            }
+        }
+    }
+}
 
 // ---------------------------------------------------------------------------
 // Application state
@@ -14,6 +68,7 @@ struct ArticuelateApp {
     selected_cue_index: usize,
     selected_task_index: Option<usize>,
     search_query: String,
+    tree: DockState<Tab>,
 }
 
 impl Default for ArticuelateApp {
@@ -71,12 +126,17 @@ impl Default for ArticuelateApp {
             },
         ];
 
+        let mut tree = DockState::new(vec![Tab::Cuelist]);
+        let [cuelist_node, _media_node] = tree.main_surface_mut().split_right(egui_dock::NodeIndex::root(), 0.75, vec![Tab::Media]);
+        let _ = tree.main_surface_mut().split_below(cuelist_node, 0.65, vec![Tab::Detail]);
+
         Self {
             engine: AudioEngine::new(),
             cues,
             selected_cue_index: 0,
             selected_task_index: None,
             search_query: String::new(),
+            tree,
         }
     }
 }
@@ -100,40 +160,16 @@ impl eframe::App for ArticuelateApp {
                 panels::status_bar::render(ui, &self.engine);
             });
 
-        // --- 3. ACTIVE MEDIA PANEL (Right) ---
-        egui::SidePanel::right("media_panel")
-            .resizable(true)
-            .default_width(300.0)
-            .min_width(200.0)
-            .show(ctx, |ui| {
-                let playbacks = self.engine.active_playbacks();
-                panels::media::render(ui, &playbacks);
-            });
-
-        // --- 4. DETAIL PANEL (Bottom of the remaining left space) ---
-        egui::TopBottomPanel::bottom("detail_panel")
-            .resizable(true)
-            .default_height(220.0)
-            .min_height(100.0)
-            .show(ctx, |ui| {
-                let selected_cue = self.cues.get(self.selected_cue_index);
-                let selected_task = selected_cue
-                    .and_then(|cue| self.selected_task_index.map(|i| &cue.tasks[i]));
-                panels::detail::render(ui, selected_cue, selected_task);
-            });
-
-        // --- 5. MAIN CUELIST (Takes all remaining center space) ---
+        // --- 3. DOCK AREA (Takes all remaining space) ---
         egui::CentralPanel::default().show(ctx, |ui| {
-            // Header
-            panels::cuelist::render_header(ui);
-            ui.add_space(4.0);
-
-            // Scrollable grid
-            egui::ScrollArea::vertical()
-                .auto_shrink([false; 2])
-                .show(ui, |ui| {
-                    panels::cuelist::render(ui, &self.cues, &mut self.selected_cue_index);
-                });
+            let mut tab_viewer = MyTabViewer {
+                engine: &mut self.engine,
+                cues: &mut self.cues,
+                selected_cue_index: &mut self.selected_cue_index,
+                selected_task_index: &mut self.selected_task_index,
+            };
+            DockArea::new(&mut self.tree)
+                .show_inside(ui, &mut tab_viewer);
         });
     }
 }
@@ -153,6 +189,9 @@ fn main() -> eframe::Result<()> {
     eframe::run_native(
         "Articuelate",
         options,
-        Box::new(|_cc| Ok(Box::new(ArticuelateApp::default()))),
+        Box::new(|cc| {
+            catppuccin_egui::set_theme(&cc.egui_ctx, catppuccin_egui::MACCHIATO);
+            Ok(Box::new(ArticuelateApp::default()))
+        }),
     )
 }

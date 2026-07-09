@@ -9,6 +9,8 @@ authors = ["H3mul"]
 eframe = "0.31"
 egui = "0.31"
 egui_extras = "0.31"
+egui_dock = "0.16"
+catppuccin-egui = { version = "5.7.0", default-features = false, features = ["egui31"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 kira = "0.12"
