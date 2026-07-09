@@ -1,0 +1,22 @@
+[
+  {
+    "label": "Debug Articuelate",
+    "adapter": "CodeLLDB",
+    "request": "launch",
+    "program": "target/debug/articuelate",
+    "args": [],
+    "cwd": ".",
+    "terminal": "integrated",
+    "preLaunchTask": "cargo build"
+  },
+  {
+    "label": "Debug Articuelate (Release)",
+    "adapter": "CodeLLDB",
+    "request": "launch",
+    "program": "target/release/articuelate",
+    "args": [],
+    "cwd": ".",
+    "terminal": "integrated",
+    "preLaunchTask": "cargo build --release"
+  }
+]

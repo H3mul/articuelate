@@ -1,0 +1,36 @@
+version: "3"
+
+tasks:
+  default:
+    desc: Build for the current platform
+    cmds:
+      - cargo build
+
+  build:
+    desc: Build for the current platform
+    cmds:
+      - task: 'build:{{OS}}'
+
+  build:linux:
+    desc: Build for Linux
+    cmds:
+      - cargo build --target x86_64-unknown-linux-gnu
+    platforms:
+      - linux
+
+  build:windows:
+    desc: Build for Windows
+    cmds:
+      - cargo build
+
+  build:windows:cross:
+    desc: Build for Windows (cross-compile from Linux)
+    cmds:
+      - cargo build --target x86_64-pc-windows-gnu
+    platforms:
+      - linux
+
+  build:release:
+    desc: Build release for the current platform
+    cmds:
+      - cargo build --release
