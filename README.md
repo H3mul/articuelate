@@ -17,7 +17,7 @@ Articuelate is a cross-platform (Windows & Linux) alternative to QLab, purpose-b
 
 | Layer | Technology |
 |-------|-----------|
-| Language | **Rust** (edition 2024) |
+| Language | **Rust** (edition 2021) |
 | Audio Engine | **Kira** (v0.12) & **cpal** |
 | Desktop Shell | **Tauri v2** (OS-native WebView) |
 | UI Framework | **React** + **Vite** |
@@ -41,15 +41,15 @@ A **dockable 3-Panel Workspace** managed by Golden Layout inside the Tauri WebVi
 
 ### Prerequisites
 
-- [Rust](https://www.rust-lang.org/) (edition 2024) + the Tauri v2 system dependencies for your OS
+- [Rust](https://www.rust-lang.org/) (edition 2021) + the Tauri v2 system dependencies for your OS
 - [Node.js](https://nodejs.org/) (v20+) and npm
 - [Task](https://taskfile.dev/) — the build system
 
 ### Run the full Tauri app
 
 ```sh
-# Install frontend deps (first time)
-npm --prefix ui install
+# Install frontend deps (first time) — inside the desktop crate
+npm --prefix crates/app-desktop install
 
 # Launch: compiles Rust, opens the WebView window
 task tauri:dev
@@ -73,19 +73,28 @@ task check             # cargo check
 ## Project Layout
 
 ```
-articuelate/                 Rust crate + Tauri config (root)
-├── src/                     Rust core: cue model, engine, Tauri commands, state
-├── capabilities/            Tauri v2 permission capabilities
-├── icons/                   App icons (regenerate with `task icons`)
-├── ui/                      React + Vite + Mantine frontend
-│   └── src/
-│       ├── components/      Toolbar, CueList, DetailPanel, MediaPanel, StatusBar
-│       ├── layout/          Golden Layout workspace
-│       ├── ipc.ts           Tauri invoke + mock fallback
-│       ├── store.ts         Shared reactive store (useSyncExternalStore)
-│       └── types.ts         Shared TypeScript types
+articuelate/                 Repo root = Cargo workspace only (clean)
+├── Cargo.toml               Virtual workspace (crates/*)
+├── crates/
+│   ├── app-backend/         Pure Rust core (no Tauri): cue model + engine
+│   │   └── src/{lib,cue,engine}.rs
+│   └── app-desktop/         Thin Tauri wrapper + the TypeScript frontend
+│       ├── Cargo.toml       tauri + app-backend dependency
+│       ├── package.json      Vite / TypeScript deps + `tauri:dev` / `tauri:build`
+│       ├── vite.config.ts    Vite configuration
+│       ├── tsconfig.json     TS configuration
+│       ├── index.html        Vite HTML entry
+│       ├── tauri.conf.json   Tauri v2 config (frontend routing)
+│       ├── capabilities/     Tauri v2 permission capabilities
+│       ├── icons/            App icons (regenerate with `task icons`)
+│       ├── src/              Rust desktop layer: lib/main/state/commands.rs
+│       └── src-ui/           React + Vite + Mantine frontend
+│           ├── components/    Toolbar, CueList, DetailPanel, MediaPanel, StatusBar
+│           ├── layout/        Golden Layout workspace
+│           ├── ipc.ts         Tauri invoke + mock fallback
+│           ├── store.ts       Shared reactive store (useSyncExternalStore)
+│           └── types.ts       Shared TypeScript types
 ├── scripts/gen_icons.mjs    Placeholder icon generator
-├── tauri.conf.json          Tauri v2 configuration
 └── Taskfile.yaml            Build tasks
 ```
 

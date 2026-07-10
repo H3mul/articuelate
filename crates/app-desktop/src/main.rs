@@ -2,5 +2,5 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 fn main() {
-    articuelate_lib::run();
+    app_desktop_lib::run();
 }

@@ -1,13 +1,9 @@
 use std::sync::Mutex;
 
-use crate::cue::{Cue, CueStatus, FollowMode};
-use crate::engine::AudioEngine;
+use app_backend::cue::{Cue, CueStatus, FollowMode};
+use app_backend::engine::AudioEngine;
 
-/// Shared, process-wide application state.
-///
-/// For this proof-of-concept the `Vec<Cue>` flat chain and the audio engine
-/// live here in Rust (the single source of truth). The React/Tauri frontend
-/// reads snapshots via IPC commands and dispatches transport actions back.
+/// Shared, process-wide application state managed by Tauri.
 pub struct AppState {
     pub cues: Mutex<Vec<Cue>>,
     pub engine: Mutex<AudioEngine>,
@@ -33,23 +29,23 @@ fn sample_cues() -> Vec<Cue> {
             status: CueStatus::Ready,
             follow_mode: FollowMode::Manual,
             tasks: vec![
-                crate::cue::Task {
+                app_backend::cue::Task {
                     target_name: "BGM".into(),
                     property: "Volume".into(),
                     target_value: -24.0,
                     duration_secs: 3.0,
-                    curve: crate::cue::FadeCurve::Linear,
-                    output: crate::cue::OutputTarget {
+                    curve: app_backend::cue::FadeCurve::Linear,
+                    output: app_backend::cue::OutputTarget {
                         name: "Main L/R".into(),
                     },
                 },
-                crate::cue::Task {
+                app_backend::cue::Task {
                     target_name: "Player".into(),
                     property: "Play".into(),
                     target_value: 0.0,
                     duration_secs: 0.0,
-                    curve: crate::cue::FadeCurve::Linear,
-                    output: crate::cue::OutputTarget {
+                    curve: app_backend::cue::FadeCurve::Linear,
+                    output: app_backend::cue::OutputTarget {
                         name: "Main L/R".into(),
                     },
                 },

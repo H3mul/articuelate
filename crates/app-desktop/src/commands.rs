@@ -1,8 +1,8 @@
 use serde::Serialize;
 use tauri::State;
 
-use crate::cue::Cue;
-use crate::engine::ActivePlayback;
+use app_backend::cue::Cue;
+use app_backend::engine::ActivePlayback;
 use crate::state::AppState;
 
 /// Backend telemetry snapshot for the status bar.

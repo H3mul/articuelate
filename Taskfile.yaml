@@ -1,44 +1,33 @@
 version: "3"
 
 tasks:
-  default:
-    desc: Build the Tauri app for the current platform
-    cmds:
-      - node scripts/tauri.mjs build
-
   # --- Tauri (full app) ---
-  # Runs from the repo root (where tauri.conf.json lives) via scripts/tauri.mjs.
   tauri:dev:
     desc: Run the Tauri dev app (Rust + WebView)
     cmds:
-      - node scripts/tauri.mjs dev
+      - npm --prefix crates/app-desktop run tauri:dev
 
   tauri:build:
     desc: Build the bundled Tauri app
     cmds:
-      - node scripts/tauri.mjs build
+      - npm --prefix crates/app-desktop run tauri:build
 
   # --- Frontend only (fast layout iteration, no Rust compile) ---
   frontend:dev:
     desc: Run the Vite dev server against mock data
     cmds:
-      - npm --prefix ui run dev
+      - npm --prefix crates/app-desktop run dev
 
   frontend:build:
-    desc: Build the frontend bundle into ui/dist
+    desc: Build the frontend bundle into crates/app-desktop/dist
     cmds:
-      - npm --prefix ui run build
+      - npm --prefix crates/app-desktop run build
 
-  # --- Rust core ---
+  # --- Rust workspace ---
   check:
-    desc: Run cargo check on the Rust core
+    desc: Run cargo check on the whole workspace
     cmds:
       - cargo check
-
-  build:release:
-    desc: Build the Tauri app in release mode
-    cmds:
-      - node scripts/tauri.mjs build --release
 
   icons:
     desc: Regenerate placeholder app icons

@@ -80,10 +80,11 @@ function makeIco(png) {
 
 const COLOR = [26, 27, 30]; // #1a1b1e
 
-fs.writeFileSync('icons/32x32.png', makePng(32, COLOR));
-fs.writeFileSync('icons/128x128.png', makePng(128, COLOR));
-fs.writeFileSync('icons/128x128@2x.png', makePng(256, COLOR));
-fs.writeFileSync('icons/icon.png', makePng(1024, COLOR));
-fs.writeFileSync('icons/icon.ico', makeIco(makePng(256, COLOR)));
+const OUT = 'crates/app-desktop/icons';
+fs.writeFileSync(`${OUT}/32x32.png`, makePng(32, COLOR));
+fs.writeFileSync(`${OUT}/128x128.png`, makePng(128, COLOR));
+fs.writeFileSync(`${OUT}/128x128@2x.png`, makePng(256, COLOR));
+fs.writeFileSync(`${OUT}/icon.png`, makePng(1024, COLOR));
+fs.writeFileSync(`${OUT}/icon.ico`, makeIco(makePng(256, COLOR)));
 
 console.log('icons generated');

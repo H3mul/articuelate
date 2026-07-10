@@ -1,28 +1,28 @@
 [
   {
-    "label": "Debug Articuelate",
+    "label": "Debug Articuelate (dev)",
     "adapter": "CodeLLDB",
     "request": "launch",
-    "program": "target/debug/articuelate.exe",
+    "program": "target/debug/app-desktop",
     "args": [],
     "cwd": ".",
     "terminal": "integrated",
     "build": {
       "command": "cargo",
-      "args": ["build"]
+      "args": ["build", "-p", "app-desktop"]
     }
   },
   {
-    "label": "Debug Articuelate (Release)",
+    "label": "Debug Articuelate (release)",
     "adapter": "CodeLLDB",
     "request": "launch",
-    "program": "target/release/articuelate.exe",
+    "program": "target/release/app-desktop",
     "args": [],
     "cwd": ".",
     "terminal": "integrated",
     "build": {
       "command": "cargo",
-      "args": ["build", "--release"]
+      "args": ["build", "-p", "app-desktop", "--release"]
     }
   }
 ]
