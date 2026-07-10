@@ -1,0 +1,35 @@
+# Articuelate colour theme (Lapce-style).
+#
+# Styling attributes are isolated here instead of being hard-coded in Rust.
+# This file is a *layer on top of* the strong defaults baked into the `Theme`
+# struct (see src/theme.rs): any attribute you omit falls back to its default,
+# and any value that fails to parse is silently ignored in favour of that
+# default. So the app always boots.
+#
+# Top-level tables are sections; keys inside are the exact field names used in
+# the `Theme` struct and the generated accessor functions:
+#   [color] -> colour attributes   (e.g. `bg`, `accent`, `fg`)
+#   [font]  -> typography          (e.g. `mono`, `font_size`)
+
+[font]
+mono = "monospace"
+font_size = 13
+
+[color]
+bg = "#1e1e1e"
+panel = "#252528"
+panel-alt = "#2d2d31"
+border = "#3a3a3f"
+
+fg = "#d4d4d4"
+text-dim = "#8a8a8a"
+text-faint = "#5a5a60"
+
+accent = "#3fb950"
+accent-dim = "#2f8a3b"
+lapce-blue = "#1890ff"
+
+panic = "#f14c4c"
+panic-dim = "#b83030"
+
+meter = "#4ec95a"

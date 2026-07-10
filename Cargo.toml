@@ -9,3 +9,5 @@ description = "Articuelate - a native, Floem-based audio cue system inspired by 
 floem = "0.2"
 fastrand = "2"
 im = "15"
+lucide-floem = "0.2"
+toml = "0.8"
