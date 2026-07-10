@@ -16,7 +16,7 @@ mod toolbar;
 
 use floem::keyboard::Key;
 use floem::reactive::{RwSignal, SignalUpdate, create_rw_signal};
-use floem::views::{Decorators, button, h_stack, list, text, v_stack};
+use floem::views::{Decorators, h_stack, text, v_stack};
 use floem::window::WindowConfig;
 use floem::{Application, IntoView};
 
@@ -59,7 +59,6 @@ fn app_view(cues_len: usize) -> impl IntoView {
         .with_main(cuelist)
         .with_bottom(detail)
         .with_right(media)
-        .with_left(left_sidebar())
         .build(toolbar, status_bar())
         .into_view()
         .keyboard_navigable()
@@ -70,34 +69,6 @@ fn app_view(cues_len: usize) -> impl IntoView {
         );
 
     root
-}
-
-/// Minimal left "Groups" navigation sidebar (placeholder window content).
-fn left_sidebar() -> impl IntoView {
-    let header = text("GROUPS").style(|s| {
-        s.font_family(theme().font.mono.to_string())
-            .font_size(11.0)
-            .color(theme().color.text_dim)
-            .padding_horiz(12.0)
-            .padding_vert(8.0)
-            .width_full()
-    });
-
-    let items = ["Cues", "Media", "Settings"];
-    let nav = list(items.into_iter().map(|name| {
-        button(text(name).style(|s| s.color(theme().color.fg).font_size(12.0))).style(|s| {
-            s.width_full()
-                .padding_horiz(12.0)
-                .padding_vert(8.0)
-                .background(theme().color.panel)
-                .color(theme().color.fg)
-                .border_radius(4.0)
-                .hover(|s| s.background(theme().color.panel_alt))
-        })
-    }))
-    .style(|s| s.flex_col().gap(2.0).padding(8.0));
-
-    v_stack((header, nav)).style(|s| s.flex_col().width_full().background(theme().color.panel))
 }
 
 fn status_bar() -> impl IntoView {

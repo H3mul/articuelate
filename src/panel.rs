@@ -9,19 +9,19 @@
 //! the main window above the bottom panel.
 //!
 //! ```text
-//! ┌──────┬───────────────────┬──────────┐
-//! │ Left │       Main        │  Right   │
-//! │      ├───────────────────┤          │
-//! │      │      Bottom       │          │
-//! └──────┴───────────────────┴──────────┘
+//! ┌───────┬───────────────────────┬───────────┐
+//! │ Left │       Main        │  Right  │
+//! │      ├───────────────────────┤         │
+//! │      │      Bottom       │         │
+//! └───────┴───────────────────────┴───────────┘
 //! ```
 
 use floem::event::{Event, EventListener};
-use floem::kurbo::{Point, Size};
+use floem::kurbo::{Point, Size, Vec2};
 use floem::reactive::{RwSignal, SignalGet, SignalUpdate, SignalWith, create_rw_signal};
 use floem::style::CursorStyle;
 use floem::views::{Decorators, container, empty, h_stack, stack, v_stack};
-use floem::{AnyView, IntoView, View};
+use floem::{AnyView, IntoView, View, ViewId};
 
 use crate::theme::*;
 
@@ -88,6 +88,7 @@ impl PanelSystem {
         self
     }
 
+    #[allow(dead_code)]
     pub fn with_left(mut self, view: impl IntoView + 'static) -> Self {
         self.left = Some(view.into_any());
         self
@@ -169,10 +170,10 @@ fn panel_container(
         PanelLocation::Left => stack((content, handle))
             .style(|s| s.flex_row().height_pct(100.0))
             .into_any(),
-        PanelLocation::Right => stack((handle, content))
+        PanelLocation::Right => stack((content, handle))
             .style(|s| s.flex_row().height_pct(100.0))
             .into_any(),
-        PanelLocation::Bottom => stack((handle, content))
+        PanelLocation::Bottom => stack((content, handle))
             .style(|s| s.flex_col().width_pct(100.0))
             .into_any(),
         PanelLocation::Main => content.style(|s| s.size_pct(100.0, 100.0)).into_any(),
@@ -225,27 +226,49 @@ fn resize_handle(
     current_size: RwSignal<Size>,
     available: RwSignal<Size>,
 ) -> impl View {
-    // (start pointer, panel size captured at drag start)
-    let drag = create_rw_signal(None::<(Point, Size)>);
+    // At drag start we freeze the panel size and the available space (the
+    // latter is derived from the center row, which contains the panel being
+    // resized, so reading it live would create a feedback loop where the panel
+    // size chases its own clamp bound). We also record the pointer's *absolute*
+    // window position so the resize delta is measured against a stable frame of
+    // reference. The handle itself moves as the panel resizes, so using its
+    // local pointer coordinates would make the same physical cursor position
+    // map to a different local delta every frame — that feedback is what caused
+    // the jitter.
+    let drag = create_rw_signal(None::<(Point, Size, Size)>);
+
+    // Absolute pointer position in window coordinates: the handle's origin
+    // within the window plus the pointer's position relative to that origin.
+    let abs_pos = |vid: ViewId, local: Point| -> Option<Point> {
+        vid.screen_layout()
+            .and_then(|sl| sl.view_origin_in_window)
+            .map(|origin| origin + Vec2::new(local.x, local.y))
+    };
 
     let view = empty();
     let vid = view.id();
     view.on_event_stop(EventListener::PointerDown, move |event| {
         if let Event::PointerDown(p) = event {
+            // Become the active view so pointer moves are delivered here even
+            // when the cursor leaves the 4px strip (or the window) mid-drag.
             vid.request_active();
-            drag.set(Some((p.pos, current_size.get())));
+            let start_abs = abs_pos(vid, p.pos).unwrap_or(p.pos);
+            drag.set(Some((start_abs, current_size.get(), available.get())));
         }
     })
     .on_event_stop(EventListener::PointerMove, move |event| {
-        if let (Event::PointerMove(p), Some((start_pos, start_size))) = (event, drag.get()) {
-            let avail = available.get();
+        if let (Event::PointerMove(p), Some((start_abs, start_size, start_avail))) =
+            (event, drag.get())
+        {
+            let cur_abs = abs_pos(vid, p.pos).unwrap_or(p.pos);
+            let travel = cur_abs - start_abs;
             let new = match location {
-                PanelLocation::Left => (start_size.width + (p.pos.x - start_pos.x))
-                    .clamp(140.0, (avail.width - 140.0).max(140.0)),
-                PanelLocation::Right => (start_size.width - (p.pos.x - start_pos.x))
-                    .clamp(140.0, (avail.width - 140.0).max(140.0)),
-                PanelLocation::Bottom => (start_size.height - (p.pos.y - start_pos.y))
-                    .clamp(100.0, (avail.height - 100.0).max(100.0)),
+                PanelLocation::Left => (start_size.width + travel.x)
+                    .clamp(140.0, (start_avail.width - 140.0).max(140.0)),
+                PanelLocation::Right => (start_size.width - travel.x)
+                    .clamp(140.0, (start_avail.width - 140.0).max(140.0)),
+                PanelLocation::Bottom => (start_size.height - travel.y)
+                    .clamp(100.0, (start_avail.height - 100.0).max(100.0)),
                 PanelLocation::Main => start_size.width,
             };
             sizes.update(|s| match location {
@@ -257,24 +280,39 @@ fn resize_handle(
         }
     })
     .on_event_stop(EventListener::PointerUp, move |_| {
+        vid.clear_active();
         drag.set(None);
     })
     .style(move |s| {
         let dragging = drag.get().is_some();
         let is_bottom = location == PanelLocation::Bottom;
-        s.apply_if(is_bottom, |s| s.width_pct(100.0).height(4.0))
-            .apply_if(!is_bottom, |s| s.width(4.0).height_pct(100.0))
+        // Positioned absolutely on the panel's resize edge and always the last
+        // child, so it is topmost in both paint and hit-test order for every
+        // side (a later in-flow sibling would otherwise intercept the pointer
+        // for Right/Bottom, where the handle used to be stacked first).
+        s.absolute()
+            .apply_if(is_bottom, |s| {
+                s.inset_top(0.0)
+                    .inset_left(0.0)
+                    .width_pct(100.0)
+                    .height(4.0)
+            })
+            .apply_if(!is_bottom, |s| {
+                s.inset_top(0.0)
+                    .height_pct(100.0)
+                    .width(4.0)
+                    .apply_if(location == PanelLocation::Left, |s| s.inset_right(0.0))
+                    .apply_if(location == PanelLocation::Right, |s| s.inset_left(0.0))
+            })
             .apply_if(dragging, |s| {
                 s.background(theme().color.accent)
                     .apply_if(is_bottom, |s| s.cursor(CursorStyle::RowResize))
                     .apply_if(!is_bottom, |s| s.cursor(CursorStyle::ColResize))
-                    .z_index(5)
             })
             .hover(|s| {
                 s.background(theme().color.accent)
                     .apply_if(is_bottom, |s| s.cursor(CursorStyle::RowResize))
                     .apply_if(!is_bottom, |s| s.cursor(CursorStyle::ColResize))
-                    .z_index(5)
             })
     })
 }

@@ -5,14 +5,8 @@
 //! `Pct` signal. Only the bound meter bars repaint - the rest of the UI sleeps,
 //! which is exactly what an audio app needs for cheap, smooth metering.
 
-use std::time::Duration;
-
 use floem::IntoView;
-use floem::action::exec_after;
-use floem::reactive::{
-    RwSignal, SignalGet, SignalTrack, SignalUpdate, create_effect, create_get_update,
-    create_rw_signal,
-};
+use floem::reactive::{RwSignal, SignalGet, SignalUpdate, create_get_update, create_rw_signal};
 use floem::unit::{Pct, UnitExt};
 use floem::views::{Decorators, button, h_stack, label, list, slider, text, v_stack};
 use lucide_floem::Icon;
@@ -29,21 +23,21 @@ pub fn view(visible: RwSignal<PanelVisible>) -> impl IntoView {
     let levels: Vec<RwSignal<f64>> = (0..n).map(|_| create_rw_signal(0.0)).collect();
 
     // Telemetry pump: smooth random walk at ~20fps.
-    let levels_timer = levels.clone();
-    let tick = create_rw_signal(());
-    create_effect(move |_| {
-        tick.track();
-        let lt = levels_timer.clone();
-        exec_after(Duration::from_millis(50), move |_| {
-            for l in &lt {
-                l.update(|x| {
-                    let target = fastrand::f64();
-                    *x = (*x + (target - *x) * 0.35).clamp(0.0, 1.0);
-                });
-            }
-            tick.set(());
-        });
-    });
+    // let levels_timer = levels.clone();
+    // let tick = create_rw_signal(());
+    // create_effect(move |_| {
+    //     tick.track();
+    //     let lt = levels_timer.clone();
+    //     exec_after(Duration::from_millis(50), move |_| {
+    //         for l in &lt {
+    //             l.update(|x| {
+    //                 let target = fastrand::f64();
+    //                 *x = (*x + (target - *x) * 0.35).clamp(0.0, 1.0);
+    //             });
+    //         }
+    //         tick.set(());
+    //     });
+    // });
 
     let mut channels = Vec::new();
     for idx in 0..n {

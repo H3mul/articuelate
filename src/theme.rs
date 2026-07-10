@@ -170,7 +170,7 @@ define_theme! {
     },
     font: {
         mono: (String, "monospace".to_string()),
-        font_size: (f64, 13.0),
+        // font_size: (f64, 13.0),
     },
 }
 
