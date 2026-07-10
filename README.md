@@ -18,84 +18,72 @@ Articuelate is a cross-platform (Windows & Linux) alternative to QLab, purpose-b
 | Layer | Technology |
 |-------|-----------|
 | Language | **Rust** (edition 2021) |
-| Audio Engine | **Kira** (v0.12) & **cpal** |
-| Desktop Shell | **Tauri v2** (OS-native WebView) |
-| UI Framework | **React** + **Vite** |
-| Component Library | **Mantine UI** (dark, dense, desktop-first) |
-| Window Management | **Golden Layout** (dockable, splittable, draggable panels) |
-| Serialization | **Serde** (JSON/YAML) |
+| GUI Framework | **Floem** (v0.2) — immediate-mode reactive widgets, native (no WebView) |
+| Reactive Primitives | Floem `RwSignal` / `create_memo` / `create_effect` + `im` (immutable vectors) |
+| Windowing | Floem's built-in Winit-based windowing |
+| Audio Engine | *Planned* — **Kira** (v0.12) & **cpal** (not yet wired; placeholder data only) |
+| Serialization | *Planned* — **Serde** (JSON/YAML) |
+
+> The earlier Tauri v2 + React + Mantine + Golden Layout stack was replaced by a
+> single native Rust crate using Floem. See `docs/pdd.md` for the rationale behind
+> choosing a Rust-native GUI.
 
 ## UI
 
-A **dockable 3-Panel Workspace** managed by Golden Layout inside the Tauri WebView, with a sticky global toolbar and status bar. Panels can be split, dragged, and torn off (e.g. the Media Panel to a second monitor).
+A **Lapce-inspired 3-Pane Workspace** rendered natively with Floem — a dark, dense,
+editor-style layout with a sticky global toolbar and status bar. Panels collapse via
+toggles (draggable splitters land when Floem ships them).
 
-- **Toolbar (top):** Transport controls — Pause, large GO, Back — plus a global search/filter and a red Panic (Stop All) button.
-- **Cuelist (top-left):** The flat execution chain, with visual folding (indent) for `Auto-Continue`/`Auto-Follow` children. Vanilla Mantine list for this proof-of-concept (virtualization via `@tanstack/react-virtual` lands later).
-- **Detail Panel (bottom-left):** Context-sensitive inspector built from Mantine form controls (NumberInput, Select, Slider) that reacts to the current selection.
-- **Active Media Panel (right):** Live engine telemetry — playback layers with progress and volume meters, animated for feel.
-- **Status Bar (bottom):** Hardware/driver status and CPU/DSP headroom.
+- **Toolbar (top):** Transport controls — Pause, large GO, Back — plus a global search/filter, panel toggles, a red Panic (Stop All) button, and a live cue readout (`CUE n/N`).
+- **Cuelist (top-left):** The flat execution chain, virtualized via Floem `virtual_list`, with visual indenting for `Auto-Continue`/`Auto-Follow` children, active-cue highlight, and action glyphs (▶ play / ◢ fade / ■ stop). Click to select; GO advances the active cue.
+- **Detail Panel (bottom-left):** Context-sensitive inspector with three tabs — **General**, **Audio Routing** (2×4 toggle matrix), and **Fades** (duration/volume sliders) — bound to the selected cue. Toggle with **Ctrl+J**.
+- **Active Media Panel (right):** Live level meters with fine-grained per-channel `RwSignal`s animated by a timer (`exec_after`), repainting only the bound meter node. Collapsible.
+- **Status Bar (bottom):** Static status strings.
 
-> **Status:** This is a layout proof-of-concept. The React frontend talks to the Rust core over Tauri IPC (`invoke`). When run under a plain Vite dev server (no Tauri), it falls back to static mock data so the layout can be iterated on without compiling Rust.
+> **Status:** This is a layout placeholder. All data is mocked in `src/model.rs`
+> (`sample_cues`, `sample_active_media`); there is no real audio backend yet. The UI
+> demonstrates the full three-pane skeleton and reactivity model from `docs/ui.md`.
 
 ## Getting Started
 
 ### Prerequisites
 
-- [Rust](https://www.rust-lang.org/) (edition 2021) + the Tauri v2 system dependencies for your OS
-- [Node.js](https://nodejs.org/) (v20+) and npm
-- [Task](https://taskfile.dev/) — the build system
+- [Rust](https://www.rust-lang.org/) (edition 2021) — toolchain only; **no Node.js, npm, or Tauri required**.
 
-### Run the full Tauri app
+### Build & run
 
 ```sh
-# Install frontend deps (first time) — inside the desktop crate
-npm --prefix crates/app-desktop install
+# Compile and launch the native window
+cargo run
 
-# Launch: compiles Rust, opens the WebView window
-task tauri:dev
+# Build a release binary
+cargo build --release
 
-# Build a bundled binary
-task tauri:build
+# Type/lint check without a full build
+cargo check
 ```
 
-### Iterate on layout only (no Rust compile)
+### Keyboard shortcuts
 
-```sh
-task frontend:dev      # vite dev server at http://localhost:5173 (mock data)
-```
-
-### Rust core only
-
-```sh
-task check             # cargo check
-```
+- **Ctrl+J** — toggle the bottom Detail Panel.
 
 ## Project Layout
 
 ```
-articuelate/                 Repo root = Cargo workspace only (clean)
-├── Cargo.toml               Virtual workspace (crates/*)
-├── crates/
-│   ├── app-backend/         Pure Rust core (no Tauri): cue model + engine
-│   │   └── src/{lib,cue,engine}.rs
-│   └── app-desktop/         Thin Tauri wrapper + the TypeScript frontend
-│       ├── Cargo.toml       tauri + app-backend dependency
-│       ├── package.json      Vite / TypeScript deps + `tauri:dev` / `tauri:build`
-│       ├── vite.config.ts    Vite configuration
-│       ├── tsconfig.json     TS configuration
-│       ├── index.html        Vite HTML entry
-│       ├── tauri.conf.json   Tauri v2 config (frontend routing)
-│       ├── capabilities/     Tauri v2 permission capabilities
-│       ├── icons/            App icons (regenerate with `task icons`)
-│       ├── src/              Rust desktop layer: lib/main/state/commands.rs
-│       └── src-ui/           React + Vite + Mantine frontend
-│           ├── components/    Toolbar, CueList, DetailPanel, MediaPanel, StatusBar
-│           ├── layout/        Golden Layout workspace
-│           ├── ipc.ts         Tauri invoke + mock fallback
-│           ├── store.ts       Shared reactive store (useSyncExternalStore)
-│           └── types.ts       Shared TypeScript types
-├── scripts/gen_icons.mjs    Placeholder icon generator
-└── Taskfile.yaml            Build tasks
+articuelate/                 Repo root = single binary crate
+├── Cargo.toml               Package "articuelate" (floem, fastrand, im)
+├── src/
+│   ├── main.rs              App assembly, window config, Ctrl+J shortcut, status bar
+│   ├── theme.rs             Lapce-style dark palette (Color constants) + MONO font
+│   ├── model.rs             Placeholder data: Cue / CueAction / FollowMode + samples
+│   ├── toolbar.rs           Top transport toolbar (Pause/GO/Back/Search/Panic/toggles)
+│   ├── cuelist.rs           Virtualized cuelist (virtual_list) + cue/action rows
+│   ├── detail.rs            Bottom inspector (General / Routing / Fades tabs)
+│   └── media.rs             Right "Active Media" sidebar with animated level meters
+├── docs/
+│   ├── pdd.md               Product Design Document (architecture rationale)
+│   └── ui.md                UI layout schematic (3-pane Lapce-style workspace)
+└── AGENTS.md                Contributor notes
 ```
 
 ## Development Roadmap
@@ -104,7 +92,7 @@ articuelate/                 Repo root = Cargo workspace only (clean)
 |-------|-------|----------|
 | 1 | State machine & data models (`Vec<Cue>`, Inherit From) | ~1.5 weeks |
 | 2 | Audio engine backend (Kira integration, state-squashing) | ~1.5 weeks |
-| 3 | Tauri + React/Mantine GUI (Golden Layout, 3-pane workspace) | ~3 weeks |
+| 3 | Native Floem GUI (Lapce-style 3-pane workspace, draggable splitters) | ~3 weeks |
 | 4 | Serialization & hardware resilience (JSON, USB recovery) | ~1.5 weeks |
 
 ## License
@@ -113,4 +101,4 @@ MIT — see [LICENSE](LICENSE).
 
 ## Ethical & Legal
 
-Articuelate is a **clean room** implementation. Built entirely from scratch in Rust/Tauri. No code decompilation, reverse engineering, or proprietary assets are used. The project brand and marketing maintain strict separation from proprietary trademarks.
+Articuelate is a **clean room** implementation. Built entirely from scratch in Rust with the native Floem GUI (previously Tauri). No code decompilation, reverse engineering, or proprietary assets are used. The project brand and marketing maintain strict separation from proprietary trademarks.

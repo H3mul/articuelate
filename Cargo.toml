@@ -1,6 +1,11 @@
-[workspace]
-members = [
-    "crates/app-backend",
-    "crates/app-desktop",
-]
-resolver = "2"
+[package]
+name = "articuelate"
+version = "0.1.0"
+edition = "2024"
+default-run = "articuelate"
+description = "Articuelate - a native, Floem-based audio cue system inspired by Lapce"
+
+[dependencies]
+floem = "0.2"
+fastrand = "2"
+im = "15"

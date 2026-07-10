@@ -1,13 +1,13 @@
 Product Definition Document (PDD)
 
 Project: Open-Source Audio Cue System
-Target Platforms: Windows & Linux (Desktop)
+Target Platforms: Windows, macOS, & Linux (Native Desktop)
 
 1. Executive Summary
 
 This project aims to create a modern, cross-platform, open-source audio cue system designed specifically for professional live show control (theatre, immersive experiences, live events).
 
-Unlike DAWs which rely on static timelines, this system is a deterministic, event-driven state machine. It provides a highly reliable, operator-centric runtime environment focused on safe audio execution, quick recovery, and intuitive show design.
+Built purely in Rust, it delivers a deterministic, event-driven state machine with the ultra-low memory footprint and extreme speed of a native application.
 
 2. Core Philosophy & Data Architecture
 
@@ -37,49 +37,43 @@ When jumping out of sequence, skipped cues are evaluated instantly.
 
 Non-temporal tasks are "squashed" and applied immediately via lock-free messages to the audio thread. Temporal constraints are bypassed.
 
-3. Technology Stack (Tauri + Rust Backend)
+3. Technology Stack (Pure Native Rust)
 
-The application strictly separates the high-performance audio engine from the flexible, component-rich UI.
+The application unifies the frontend and backend in a single, lightweight Rust binary, connected by reactive signals and lock-free buffers.
 
-3.1 Backend: Rust (Core Logic & DSP)
+3.1 Core Audio Backend (Real-Time DSP)
 
-Audio Hardware: cpal used directly for low-latency driver access (ASIO/WASAPI/JACK).
+Audio Hardware: cpal used directly for low-latency driver access (ASIO/WASAPI/JACK/CoreAudio).
 
-Audio DSP Pipeline: Custom pipeline (via fundsp or manual slices) for crosspoint matrix mixing and sample-accurate triggers.
+Audio DSP Pipeline: Custom pipeline (fundsp or manual slices) for crosspoint matrix mixing, panning, and sample-accurate triggers.
 
-Thread Communication: Lock-free ringbuffers (ringbuf) connect the async IPC command handlers to the real-time cpal audio thread.
+Thread Communication: Lock-free ringbuffers (ringbuf or rtrb) connect the UI thread to the real-time cpal audio thread.
 
-Serialization: Serde handles project file I/O.
+Serialization: Serde handles project file I/O (JSON/YAML).
 
-3.2 Frontend: Tauri v2 + React (UI Layer)
+3.2 Frontend (Floem)
 
-Framework: React inside Tauri's OS-native WebView.
+Framework: Floem. A native, retained-mode, reactive GUI framework.
 
-Component Library: Mantine UI. Provides accessible, dense, dark-themed inputs, sliders, and standard desktop UI paradigms out of the box.
+State Management: Fine-grained reactive signals (RwSignal). UI components surgically update only when their bound data changes.
 
-Window Management: Golden Layout. Provides a robust, dockable, resizable paneling system for the multi-pane workspace.
-
-Specialty Components: Leverage React ecosystem libraries (e.g., react-rotary-knob, wavesurfer.js) for audio-specific visualizations.
+Aesthetic Reference: Modeled aggressively after the Lapce editor. Features a dark-mode, modular pane system, crisp typography, and virtualized list rendering.
 
 4. User Interface (UI) Specification
 
-Rendered via React and managed by Golden Layout, the workspace provides a Unified Three-Pane Layout.
+The workspace provides a Unified Three-Pane Layout utilizing a dockable, collapsible panel system.
 
-4.1 Pane 1: The Unified Cuelist (Left)
+4.1 Pane 1: The Unified Cuelist (Main View)
 
-Renders the flat chain. Auto-Continue/Follow cues are visually indented under parent "GO" cues.
+Renders the flat chain using Floem's virtual_list. Auto-Continue/Follow cues are visually indented under parent "GO" cues.
 
-Utilizes a virtualized list (e.g., @tanstack/react-virtual) to handle thousands of cues without DOM bloat.
+4.2 Pane 2: Contextual Detail Panel (Bottom Panel)
 
-4.2 Pane 2: Contextual Detail Panel (Bottom Left)
+Reacts to the currently selected cue/task signal. Contains clean, Lapce-style flat sliders, text inputs, and matrix routing toggle-grids. Can be quickly collapsed/hidden.
 
-Reacts to the current selection. Contains Mantine's robust numeric steppers, combo boxes, and custom matrix-routing grids.
+4.3 Pane 3: Active Media Panel (Right Sidebar)
 
-4.3 Pane 3: Active Media Panel (Right)
-
-Displays real-time engine telemetry.
-
-IPC Strategy: To avoid IPC bottlenecking, peak meter telemetry is throttled to 30fps and batched before sending to the React frontend.
+Displays real-time engine telemetry. High-frequency updates bypass full UI redraws via Floem's surgical signal updates.
 
 5. MVP Development Roadmap
 
@@ -87,14 +81,14 @@ Phase 1: Backend State & DSP (~3 Weeks)
 
 Define Rust data models, establish cpal streams, build the matrix-mixing pipeline, and implement the lock-free ringbuffer bridge.
 
-Phase 2: Tauri IPC & API Boundary (~1 Week)
+Phase 2: Floem State & Routing (~1.5 Weeks)
 
-Define the strict IPC payload structures. Build the command handlers that translate frontend requests into ringbuffer pushes.
+Wrap the Phase 1 structs in Floem RwSignals. Build the application shell and Lapce-style layout system (Splitters, Sidebars).
 
-Phase 3: React Frontend (~3 Weeks)
+Phase 3: GUI Implementation (~2.5 Weeks)
 
-Initialize Tauri + React + Mantine. Implement Golden Layout. Build the virtualized cuelist, inspector panel, and active media panel.
+Build the virtualized Cuelist, the inspector detail forms, and the active media meters.
 
 Phase 4: Serialization & Polish (~1 Week)
 
-Implement file saving/loading. Apply strict CSS (user-select: none) to ensure a native application feel.
+Implement file saving/loading via Serde. Polish custom styling and keyboard shortcuts.

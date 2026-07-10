@@ -1,98 +1,125 @@
-UI Layout & Interface Specification
+# UI Layout & Interface Specification (Lapce-Inspired)
 
-This document defines the graphical interface architecture for our audio cue system, utilizing the Tauri, React, and Golden Layout stack. The application provides a robust, dockable 3-Panel Layout, ensuring operators have simultaneous access to the cue sequence, deep-edit parameters, and live playback telemetry without sacrificing performance.
+This document defines the graphical interface architecture for our audio cue system. The application utilizes a Lapce-inspired modular pane layout. This ensures a native, hyper-responsive feel while keeping complex data cleanly organized.
 
 1. Global Application Layout
 
-The window is managed by Golden Layout within a Tauri WebView. This allows for a highly customizable, drag-and-drop paneling system standard in professional audio software (meaning the operator can tear off the Media Panel to a second monitor if needed). It is divided into a global toolbar, three primary interaction panels, and a status bar.
+The window is structured like a modern code editor, maximizing screen real estate for the operator while keeping deep-dive parameters accessible in collapsible docks.
 
 ASCII Layout Schematic
 
 +-----------------------------------------------------------------------------+
-|  [||] (Pause)   [>] (GO)   [<] (BACK)   [Search: "wind" ]      [ PANIC ]    | <- TOOLBAR
+| [||] (Pause) [>] (GO) [<] (BACK) [Search: "wind" ] [ PANIC ] | <- TITLE / TOOLBAR
 +----------------------------------------------------+------------------------+
-|                                                    |                        |
-|  > CUE 1.0 - Storm Intro (Go)                      |  ACTIVE MEDIA          | <- MEDIA PANEL
-|      - Play: Wind_Loop.wav (Vol: -12dB, Loop)      |                        |    (Right side,
-|      - Play: Rain_Heavy.wav (Vol: -8dB, Loop)      |  > CUE 1.0 (Wind_Loop) |     Vertical split)
-|      * Fade: BGM to -24dB (Dur: 3.0s)              |    [======-----] -12dB |
-|  v CUE 2.0 - Thunder Strike (Go)                   |                        |
-|  > CUE 3.0 - Storm Outro (Auto-Follow)             |  > CUE 1.0 (Rain)      |
-|                                                    |    [========---]  -8dB |
-|                                                    |                        |
-|                MAIN CUELIST                        |                        |
-|             (Top 2/3 of Left Pane)                 |                        |
-|                                                    |                        |
-+----------------------------------------------------+                        |
-|                                                    |                        |
-|  [Context: Task 1.1 - Wind_Loop]                   |                        |
-|  Target: BGM         Property: Volume              |                        |
-|  Target Vol: [-24]   Duration: [3.0]               |                        |
-|  Matrix: [In L -> Out 1, 2] [In R -> Out 3, 4]     |                        |
-|                                                    |                        |
-|              DETAIL PANEL                          |                        |
-|         (Bottom 1/3 of Left Pane)                  |                        |
+| | |
+| > CUE 1.0 - Storm Intro (Go) | ACTIVE MEDIA | <- RIGHT SIDEBAR
+| - Play: Wind_Loop.wav (Vol: -12dB, Loop) | | (Collapsible)
+| - Play: Rain_Heavy.wav (Vol: -8dB, Loop) | > CUE 1.0 (Wind_Loop) |  
+| * Fade: BGM to -24dB (Dur: 3.0s) | [======-----] -12dB |
+| v CUE 2.0 - Thunder Strike (Go) | |
+| > CUE 3.0 - Storm Outro (Auto-Follow) | > CUE 1.0 (Rain) |
+| | [========---] -8dB |
+| | |
+| MAIN CUELIST | |
+| (Virtualized List) | |
+| | |
++----------------------------------------------------+ |
+| | |
+| [Context: Task 1.1 - Wind_Loop] | |
+| Target: BGM Property: Volume | |
+| Target Vol: [-24] Duration: [3.0] | |
+| Matrix: [In L -> Out 1, 2] [In R -> Out 3, 4] | |
+| | |
+| BOTTOM PANEL | |
+| (Collapsible) | |
 +----------------------------------------------------+------------------------+
-|  STATUS: Connected (ASIO: Focusrite USB)           |  CPU: 4%   DSP: 12%    | <- STATUS BAR
+| STATUS: Connected (ASIO: Focusrite USB) | CPU: 4% DSP: 12% | <- STATUS BAR
 +-----------------------------------------------------------------------------+
 
-
-2. Component Breakdown (React & Mantine UI)
+2. Component Breakdown & Floem Logic
 
 A. The Toolbar (Top)
 
-The global control strip rendered as a sticky header outside of the Golden Layout grid.
+Design: Flat, borderless icon buttons.
 
-Transport Controls: Massive, misclick-proof GO and BACK buttons utilizing Mantine's robust Button components with custom CSS sizing and high-contrast theming.
+Logic: Clicking "GO" triggers a signal that sends a lock-free message to the audio thread to evaluate the next cue index.
 
-Search / Filter: A global text input that instantly filters the Main Cuelist state.
+B. The Main Cuelist (Center / Main View)
 
-Safety Controls: The Panic (Stop All) button, distinctively colored (e.g., Mantine's red palette).
+Design: High-contrast text on a dark charcoal background. Selection states are highlighted with a subtle accent color (e.g., Lapce Blue or Theatre Green).
 
-B. The Main Cuelist (Top-Left Panel)
+Floem Implementation: Uses Floem's virtual_list. The flat Vec<Cue> is mapped to a signal. Expanding/collapsing Auto-Continue chains dynamically updates the virtual list's viewport calculation.
 
-The primary sequence view, occupying the top 2/3 of the left-hand split.
+C. Context-Dependent Detail Panel (Bottom Panel)
 
-Virtualized List: Built using @tanstack/react-virtual to handle thousands of cues smoothly without bloating the DOM.
+Design: Divided into logical tabs (e.g., "General", "Audio Routing", "Fades").
 
-Flat-Chain Visual Folding: Displays the strict 1:1 Vec<Cue> flat chain stored in Rust. Cues chained via Auto-Continue or Auto-Follow are visually indented beneath their parent "GO" cue using simple CSS padding.
+Lapce UX: Can be toggled open or closed with a keyboard shortcut (e.g., Ctrl+J) or dragging the splitter down to the bottom.
 
-Keyboard Navigation: Uses global DOM event listeners to capture Up/Down and Enter keys for rapid cue traversal and firing, ensuring focus isn't accidentally trapped inside a specific Mantine input.
+Component Strategy: No need for complex visual knobs. We use sleek, horizontal number sliders (similar to dragging a number value in Blender or Unity) and toggle-button grids for the audio routing matrix.
 
-C. Context-Dependent Detail Panel (Bottom-Left Panel)
+D. Currently Playing Media (Right Sidebar)
 
-The inspector view, built with Mantine UI form controls. Reactively updates based on the active selection state.
+Design: A dedicated monitor for live telemetry.
 
-Inputs: Utilizes Mantine's NumberInput (for precise durations/fades), Select (for routing dropdowns), and Slider (for volumes).
-
-Cue Selected: Displays trigger constraints (Pre-wait, Post-wait), designer notes, and base "Inherit From" target data.
-
-Task Selected: Displays explicit parameter editing controls (e.g., volume sliders, custom fade curves, and advanced multi-channel matrix routing grids).
-
-D. Currently Playing Media Side Panel (Right Panel)
-
-A dedicated, persistent view of the audio engine's live state.
-
-High-Performance Meters: To avoid React re-render bottlenecks, volume meters are drawn using direct DOM Refs (updating div height/width) or HTML5 <canvas>, bypassing the standard React state lifecycle.
-
-Live Scrubbing: Provides visual progress bars for temporal audio playback.
-
-Manual Override: Exposes quick-access volume sliders linked directly to active audio threads for live mixing adjustments.
+Floem Implementation: This is where Floem shines. A timer running at 30/60fps pulls telemetry from the audio return-ringbuffer and updates a specific RwSignal<Vec<MeterData>>. Only the UI nodes bound to this signal (the green meter bars) update, leaving the rest of the UI untouched and saving CPU.
 
 E. Status Bar (Bottom)
 
-System health and environment telemetry.
+Design: Minimalist footer displaying active drivers, sample rate, and DSP load.
 
-Hardware Status: Displays the active low-latency driver reported by the Rust backend.
+# Deep Dive: Floem & Lapce-Inspired UI Architecture
 
-Performance Metrics: CPU and DSP thread usage, essential for monitoring the Rust audio pipeline's real-time headroom.
+This document evaluates the pivot to Floem for the GUI framework, using the Lapce code editor as the primary reference for styling, window management, and component architecture.
 
-3. UI Framework & IPC Boundaries (Tauri)
+1. Why Floem? (The Native Reactive Advantage)
 
-With the React/Tauri architecture, this layout interacts with the Rust audio engine through strict boundaries:
+Floem sits in a unique "sweet spot" in the Rust GUI ecosystem.
 
-State as Truth: The Vec<Cue> lives in Rust. When a user changes a volume slider in the Detail Panel, React fires a Tauri invoke('update_property', payload) command. Rust updates the state and emits a state_changed event back to React to trigger a UI re-render.
+Iced requires diffing the entire UI view tree on every state change.
 
-Telemetry Throttling: The Active Media Panel requires 30-60fps updates. The Rust audio thread batches peak volume data into a small payload and pushes it over the Tauri IPC via emit. A dedicated useAudioTelemetry() hook in React catches this event and updates the meter DOM nodes directly.
+Egui requires redrawing the entire UI on every frame (Immediate Mode).
 
-Native Application Feel: CSS rules (user-select: none, custom scrollbars, disabled overscroll bounce) are applied globally in the React root to ensure the WebView behaves identically to a compiled native application, hiding any standard browser behaviors.
+Floem uses Fine-Grained Reactive Signals. You wrap your state in signals (e.g., RwSignal<f32>). When a signal changes, Floem updates only the specific DOM node bound to that signal.
+
+Audio Meter Performance
+
+This reactive model is the holy grail for audio software. A high-frequency ringbuffer from the cpal audio thread can push peak volume values to a Floem RwSignal. The UI will update only the green meter bars at 60fps, utilizing virtually zero CPU, while the rest of the application remains entirely asleep.
+
+2. Emulating Lapce (The Aesthetic & Layout Paradigm)
+
+Lapce is widely praised for feeling incredibly snappy, native, and visually crisp. By studying Lapce's source code, we gain a massive head start on building our Audio Cue System.
+
+A. The Dockable Panel System
+
+Lapce uses a highly modular panel architecture (Left Sidebar, Right Sidebar, Bottom Panel, Main Editor area) with draggable splitters.
+
+Our Implementation: We map our 3-panel layout directly into a Lapce-style shell.
+
+Main Cuelist: Acts as the central "Editor" area.
+
+Detail Inspector: Sits in the collapsible "Bottom Panel".
+
+Active Media / Meters: Sits in the collapsible "Right Sidebar".
+
+Operators can hide the Detail Panel during a live show using a single keystroke (like Cmd/Ctrl + J in VS Code/Lapce), leaving only the Cuelist and Meters.
+
+B. Theming & Styling
+
+Floem uses a Rust-based, CSS-like styling API. We will lift Lapce's dark-mode aesthetic:
+
+Deep charcoal backgrounds (#1E1E1E or Lapce's specific themes).
+
+Monospace font integration for timers, cue numbers, and routing grids.
+
+Crisp, 1px borders and subtle hover states without heavy web-like drop shadows.
+
+C. The Virtualized List
+
+Lapce handles massive code files using virtualized (lazy) rendering. We will use Floem's virtual_list component to render the Vec<Cue> flat-chain. A show file with 5,000 cues will render instantly and consume negligible memory.
+
+3. Development Trade-offs
+
+The Challenge: Floem is young. You won't have a library of pre-built "Audio Knobs" like you would in React or egui.
+
+The Solution: For the MVP, we rely on standard UI paradigms (horizontal sliders, number inputs, dropdowns, routing matrices built from toggle buttons) rather than skeuomorphic knobs. This perfectly matches the sleek, flat, developer-centric aesthetic of Lapce anyway.
