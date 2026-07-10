@@ -8,9 +8,8 @@
     "cwd": ".",
     "terminal": "integrated",
     "build": {
-      "command": "cargo",
-      "args": ["build", "-p", "app-desktop"]
-    }
+      "command": "npm --prefix crates/app-desktop run tauri:dev",
+    },
   },
   {
     "label": "Debug Articuelate (release)",
@@ -21,8 +20,7 @@
     "cwd": ".",
     "terminal": "integrated",
     "build": {
-      "command": "cargo",
-      "args": ["build", "-p", "app-desktop", "--release"]
-    }
-  }
+      "command": "npm --prefix crates/app-desktop run tauri:build",
+    },
+  },
 ]

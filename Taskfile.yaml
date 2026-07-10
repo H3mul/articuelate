@@ -1,18 +1,28 @@
 version: "3"
 
 tasks:
-  # --- Tauri (full app) ---
-  tauri:dev:
-    desc: Run the Tauri dev app (Rust + WebView)
+  default:
+    desc: Run the default dev command
+    deps:
+      - dev
+
+  run:
+    desc: Run the Tauri app
+    dir: crates/app-desktop
     cmds:
-      - npm --prefix crates/app-desktop run tauri:dev
+      - cargo run
+
+  dev:
+    desc: Main dev command - start app and dev server
+    deps:
+      - run
+      - frontend:dev
 
   tauri:build:
     desc: Build the bundled Tauri app
     cmds:
       - npm --prefix crates/app-desktop run tauri:build
 
-  # --- Frontend only (fast layout iteration, no Rust compile) ---
   frontend:dev:
     desc: Run the Vite dev server against mock data
     cmds:
@@ -23,7 +33,6 @@ tasks:
     cmds:
       - npm --prefix crates/app-desktop run build
 
-  # --- Rust workspace ---
   check:
     desc: Run cargo check on the whole workspace
     cmds:
