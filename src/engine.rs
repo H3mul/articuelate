@@ -1,9 +1,12 @@
+use serde::Serialize;
+
 /// Stub audio engine that will later wrap Kira.
 pub struct AudioEngine {
     device_name: String,
     cpu_usage: f32,
     dsp_usage: f32,
     connected: bool,
+    playbacks: Vec<ActivePlayback>,
 }
 
 impl AudioEngine {
@@ -13,6 +16,7 @@ impl AudioEngine {
             cpu_usage: 4.0,
             dsp_usage: 12.0,
             connected: true,
+            playbacks: Vec::new(),
         }
     }
 
@@ -34,35 +38,42 @@ impl AudioEngine {
 
     /// Fire the next standby cue.
     pub fn fire_next(&mut self) {
-        // TODO: real Kira playback
+        if self.playbacks.is_empty() {
+            self.playbacks = vec![
+                ActivePlayback {
+                    cue_number: 1.0,
+                    label: "Wind_Loop.wav".into(),
+                    volume_db: -12.0,
+                    progress: 0.0,
+                },
+                ActivePlayback {
+                    cue_number: 1.0,
+                    label: "Rain_Heavy.wav".into(),
+                    volume_db: -8.0,
+                    progress: 0.0,
+                },
+            ];
+        } else {
+            // Advance the mock progress so the media panel feels alive.
+            for pb in &mut self.playbacks {
+                pb.progress = (pb.progress + 0.1).min(1.0);
+            }
+        }
     }
 
     /// Stop all audio immediately.
     pub fn stop_all(&mut self) {
-        // TODO: real Kira stop
+        self.playbacks.clear();
     }
 
     /// Return a list of currently-playing audio entries for the media panel.
     pub fn active_playbacks(&self) -> Vec<ActivePlayback> {
-        // Placeholder: return dummy data
-        vec![
-            ActivePlayback {
-                cue_number: 1.0,
-                label: "Wind_Loop.wav".into(),
-                volume_db: -12.0,
-                progress: 0.65,
-            },
-            ActivePlayback {
-                cue_number: 1.0,
-                label: "Rain_Heavy.wav".into(),
-                volume_db: -8.0,
-                progress: 0.42,
-            },
-        ]
+        self.playbacks.clone()
     }
 }
 
 /// A single active audio layer shown in the media panel.
+#[derive(Debug, Clone, Serialize)]
 pub struct ActivePlayback {
     pub cue_number: f64,
     pub label: String,

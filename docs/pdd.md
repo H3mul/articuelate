@@ -7,118 +7,94 @@ Target Platforms: Windows & Linux (Desktop)
 
 This project aims to create a modern, cross-platform, open-source audio cue system designed specifically for professional live show control (theatre, immersive experiences, live events).
 
-Unlike DAWs (Digital Audio Workstations) which rely on static timelines, this system is a deterministic, event-driven state machine. It provides a highly reliable, operator-centric runtime environment ("Show Mode") focused on safe, predictable audio execution, quick tech-rehearsal recovery, and intuitive show design.
+Unlike DAWs which rely on static timelines, this system is a deterministic, event-driven state machine. It provides a highly reliable, operator-centric runtime environment focused on safe audio execution, quick recovery, and intuitive show design.
 
 2. Core Philosophy & Data Architecture
 
-The system embraces a Commands Over Time philosophy, optimized into a Strict 1:1 Flat Chain data model to maximize execution safety and minimize programming complexity.
+The system embraces a Commands Over Time philosophy, utilizing a Strict 1:1 Flat Chain data model to maximize execution safety.
 
 2.1 The Strict 1:1 Data Model
 
 1 Cue = 1 Action = 1 Targetable Object.
 
-A Cue is an enum of exactly one action (e.g., PlayAudio, Fade, Stop).
+The show is stored and executed as a single, flat Vec<Cue>.
 
-Under the hood, the entire show is stored and executed as a single, flat Vec<Cue>.
+Composition is achieved by chaining cues using Auto-Continue/Auto-Follow triggers.
 
-Composition (simultaneous playback) is achieved by chaining cues using Auto-Continue or Auto-Follow triggers.
-
-Targeting is unambiguous: Fades and Stops always target the explicit ID of the Cue that generated the audio layer.
+Targeting: Fades and Stops unambiguously target the explicit ID of the Cue that generated the audio layer.
 
 2.2 The "Inherit From" (Templating) Pattern
 
-To solve cue duplication and bulk-editing (the "DRY" principle), the system implements a pure Data-Layer Inheritance pattern.
+Solves cue duplication. Cue 10 can inherit from Cue 1.
 
-A cue can be designated to "Inherit From" a master cue (e.g., Cue 10 inherits from Cue 1).
+Any property modified in Cue 10 is overlaid on top of Cue 1's data via Rust's Option<T>.
 
-Data Overlay: Any property modified in Cue 10 is overlaid on top of Cue 1's data (using Rust's Option<T> for overrides).
-
-Runtime Isolation: When triggered, the engine resolves the overlaid data. Cue 10 fully owns its execution state and custom audio pipeline. It is completely decoupled from Cue 1 at runtime.
+At runtime, Cue 10 fully owns its execution state, isolated from the master.
 
 2.3 State-Squashing (Rehearsal Mode)
 
-When jumping out of sequence (e.g., operator skips from Cue 1 to Cue 4):
+When jumping out of sequence, skipped cues are evaluated instantly.
 
-The engine evaluates the skipped cues instantly.
+Non-temporal tasks are "squashed" and applied immediately via lock-free messages to the audio thread. Temporal constraints are bypassed.
 
-Non-temporal tasks (absolute volume targets, explicit playhead seeks) are "squashed" and applied immediately via lock-free messages to the audio thread.
+3. Technology Stack (Tauri + Rust Backend)
 
-Temporal constraints (durations, fades) are executed with a 0.0s duration.
+The application strictly separates the high-performance audio engine from the flexible, component-rich UI.
 
-Active, uninterrupted audio streams continue playing naturally.
+3.1 Backend: Rust (Core Logic & DSP)
 
-3. Technology Stack
+Audio Hardware: cpal used directly for low-latency driver access (ASIO/WASAPI/JACK).
 
-The application is strictly partitioned into a declarative frontend and a low-latency, real-time backend, guaranteeing that UI rendering never blocks audio DSP processing.
+Audio DSP Pipeline: Custom pipeline (via fundsp or manual slices) for crosspoint matrix mixing and sample-accurate triggers.
 
-Audio Hardware Interface: cpal
+Thread Communication: Lock-free ringbuffers (ringbuf) connect the async IPC command handlers to the real-time cpal audio thread.
 
-Used directly to initialize and lock hardware audio streams, providing critical access to professional low-latency drivers (ASIO on Windows, WASAPI Exclusive, JACK/ALSA on Linux).
+Serialization: Serde handles project file I/O.
 
-Audio DSP Engine: Custom Pipeline (fundsp / Slice Manipulation)
+3.2 Frontend: Tauri v2 + React (UI Layer)
 
-Replaces rigid game-audio abstractions to allow for true crosspoint matrix mixing (arbitrary N-in to N-out channel routing), sample-accurate triggers, and professional-grade dynamic time stretching and pitch shifting.
+Framework: React inside Tauri's OS-native WebView.
 
-Thread Communication: Lock-Free Ringbuffers (ringbuf or rtrb)
+Component Library: Mantine UI. Provides accessible, dense, dark-themed inputs, sliders, and standard desktop UI paradigms out of the box.
 
-Serves as the critical safety bridge. State changes (play, pause, volume tweaks) and telemetry (peak meter data) are passed between the Slint UI thread and the cpal real-time audio thread without using mutexes, eliminating the risk of audio dropouts or stutters.
+Window Management: Golden Layout. Provides a robust, dockable, resizable paneling system for the multi-pane workspace.
 
-UI Framework: Slint
-
-A component-driven, declarative GUI framework using .slint markup. Provides the sleek, high-contrast, dark-themed "Pro Audio" aesthetic without boilerplate Rust styling code. UI logic reacts to property bindings updated by the backend.
-
-Serialization: Serde
-
-Handles JSON/YAML project serialization and "Inherit From" data overlays.
+Specialty Components: Leverage React ecosystem libraries (e.g., react-rotary-knob, wavesurfer.js) for audio-specific visualizations.
 
 4. User Interface (UI) Specification
 
-The system replaces the traditional, cluttered, multi-tab layout with a highly focused Unified Two-Pane Workspace rendered in Slint.
+Rendered via React and managed by Golden Layout, the workspace provides a Unified Three-Pane Layout.
 
 4.1 Pane 1: The Unified Cuelist (Left)
 
-Displays the flat Vec<Cue> execution chain using Slint's high-performance ListView for massive datasets.
+Renders the flat chain. Auto-Continue/Follow cues are visually indented under parent "GO" cues.
 
-Visual Folding: Cues linked via Auto-Continue or Auto-Follow are visually indented and grouped under their parent "GO" cue. A toggle allows the operator to collapse these chains, hiding the "tail" and keeping the UI clean during live runs.
+Utilizes a virtualized list (e.g., @tanstack/react-virtual) to handle thousands of cues without DOM bloat.
 
-4.2 Pane 2: Contextual Detail Panel (Right/Bottom)
+4.2 Pane 2: Contextual Detail Panel (Bottom Left)
 
-Reactively updates based on the selection state passed to the Slint model.
+Reacts to the current selection. Contains Mantine's robust numeric steppers, combo boxes, and custom matrix-routing grids.
 
-Displays explicit overrides, base inherited values, and multi-channel routing matrices.
+4.3 Pane 3: Active Media Panel (Right)
 
-Acts as the sole editing location, keeping the operator's physical focus locked to one area.
+Displays real-time engine telemetry.
 
-4.3 Live "Show Mode"
+IPC Strategy: To avoid IPC bottlenecking, peak meter telemetry is throttled to 30fps and batched before sending to the React frontend.
 
-A runtime workspace state that locks destructive edits.
+5. MVP Development Roadmap
 
-Features a massive GO button, BACK button, Panic (Stop All), and an Active Playback Panel listing all currently active audio layers with live output meters driven by ringbuffer telemetry.
+Phase 1: Backend State & DSP (~3 Weeks)
 
-5. Ethical & Legal Framework
+Define Rust data models, establish cpal streams, build the matrix-mixing pipeline, and implement the lock-free ringbuffer bridge.
 
-To ensure the project remains legally defensible as an open-source alternative to proprietary software (like QLab):
+Phase 2: Tauri IPC & API Boundary (~1 Week)
 
-Clean Room Development: Built entirely from scratch in Rust/Slint. No code decompilation or reverse engineering is utilized.
+Define the strict IPC payload structures. Build the command handlers that translate frontend requests into ringbuffer pushes.
 
-Original Assets: All UI paradigms rely on custom .slint styles or standard open-source icon sets. No proprietary icons or graphic assets are cloned.
+Phase 3: React Frontend (~3 Weeks)
 
-IP Compliance: The visual folding of flat cue chains and generic theatrical control methods (Auto-Follow, Cue Targeting) fall under unprotected "methods of operation." The project brand and marketing will maintain strict separation from proprietary trademarks.
+Initialize Tauri + React + Mantine. Implement Golden Layout. Build the virtualized cuelist, inspector panel, and active media panel.
 
-6. MVP Development Roadmap
+Phase 4: Serialization & Polish (~1 Week)
 
-Phase 1: State Machine & Data Models (~1.5 Weeks)
-
-Define the Vec<Cue>, pure flat-chain structs, and Inherit From data overlay logic.
-
-Phase 2: Custom Audio DSP Engine (~3 Weeks)
-
-Initialize cpal streams (ASIO/WASAPI). Build the low-level playback and matrix-mixing pipeline (using fundsp or manual slices). Establish the ringbuf communication channels.
-
-Phase 3: Slint GUI Integration (~2.5 Weeks)
-
-Design the .slint declarative frontend. Build the Rust data-bridge to bind the Phase 1 state machine to Slint's reactive properties. Implement the Three-Panel layout and visual cue folding.
-
-Phase 4: Serialization & Hardware Resilience (~1.5 Weeks)
-
-Implement JSON saving/loading via Serde (managing relative file paths). Ensure graceful fallback and recovery if hardware interfaces are disconnected.
+Implement file saving/loading. Apply strict CSS (user-select: none) to ensure a native application feel.

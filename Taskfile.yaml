@@ -2,40 +2,45 @@ version: "3"
 
 tasks:
   default:
-    desc: Build for the current platform
+    desc: Build the Tauri app for the current platform
     cmds:
-      - cargo build
+      - node scripts/tauri.mjs build
 
-  build:
-    desc: Build for the current platform
+  # --- Tauri (full app) ---
+  # Runs from the repo root (where tauri.conf.json lives) via scripts/tauri.mjs.
+  tauri:dev:
+    desc: Run the Tauri dev app (Rust + WebView)
     cmds:
-      - task: 'build:{{OS}}'
+      - node scripts/tauri.mjs dev
 
-  build:linux:
-    desc: Build for Linux
+  tauri:build:
+    desc: Build the bundled Tauri app
     cmds:
-      - cargo build --target x86_64-unknown-linux-gnu
-    platforms:
-      - linux
+      - node scripts/tauri.mjs build
 
-  build:windows:
-    desc: Build for Windows
+  # --- Frontend only (fast layout iteration, no Rust compile) ---
+  frontend:dev:
+    desc: Run the Vite dev server against mock data
     cmds:
-      - cargo build
+      - npm --prefix ui run dev
 
-  build:windows:cross:
-    desc: Build for Windows (cross-compile from Linux)
+  frontend:build:
+    desc: Build the frontend bundle into ui/dist
     cmds:
-      - cargo build --target x86_64-pc-windows-gnu
-    platforms:
-      - linux
+      - npm --prefix ui run build
 
-  build:release:
-    desc: Build release for the current platform
-    cmds:
-      - cargo build --release
-
+  # --- Rust core ---
   check:
-    desc: Run cargo check
+    desc: Run cargo check on the Rust core
     cmds:
       - cargo check
+
+  build:release:
+    desc: Build the Tauri app in release mode
+    cmds:
+      - node scripts/tauri.mjs build --release
+
+  icons:
+    desc: Regenerate placeholder app icons
+    cmds:
+      - node scripts/gen_icons.mjs

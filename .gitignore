@@ -3,3 +3,10 @@
 *.swp
 *.swo
 .DS_Store
+
+# Tauri generated schema
+/gen/
+
+# Frontend
+ui/node_modules
+ui/dist

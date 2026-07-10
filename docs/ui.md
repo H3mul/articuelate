@@ -1,10 +1,10 @@
 UI Layout & Interface Specification
 
-This document defines the graphical interface architecture for our audio cue system. The application utilizes a robust 3-Panel Layout, ensuring operators have simultaneous access to the cue sequence, deep-edit parameters, and live playback telemetry without needing to switch tabs or open floating windows.
+This document defines the graphical interface architecture for our audio cue system, utilizing the Tauri, React, and Golden Layout stack. The application provides a robust, dockable 3-Panel Layout, ensuring operators have simultaneous access to the cue sequence, deep-edit parameters, and live playback telemetry without sacrificing performance.
 
 1. Global Application Layout
 
-The window is divided into five main regions: a global toolbar, three primary interaction panels (separated by a main vertical split and a secondary horizontal split on the left), and a global status bar.
+The window is managed by Golden Layout within a Tauri WebView. This allows for a highly customizable, drag-and-drop paneling system standard in professional audio software (meaning the operator can tear off the Media Panel to a second monitor if needed). It is divided into a global toolbar, three primary interaction panels, and a status bar.
 
 ASCII Layout Schematic
 
@@ -37,62 +37,62 @@ ASCII Layout Schematic
 +-----------------------------------------------------------------------------+
 
 
-2. Component Breakdown
+2. Component Breakdown (React & Mantine UI)
 
 A. The Toolbar (Top)
 
-The global control strip.
+The global control strip rendered as a sticky header outside of the Golden Layout grid.
 
-Transport Controls: The massive, misclick-proof GO button, along with BACK and Pause.
+Transport Controls: Massive, misclick-proof GO and BACK buttons utilizing Mantine's robust Button components with custom CSS sizing and high-contrast theming.
 
-Search / Filter: A global text input that instantly filters the Main Cuelist for specific cue names, audio file names, or notes.
+Search / Filter: A global text input that instantly filters the Main Cuelist state.
 
-Safety Controls: The Panic (Stop All) button.
+Safety Controls: The Panic (Stop All) button, distinctively colored (e.g., Mantine's red palette).
 
 B. The Main Cuelist (Top-Left Panel)
 
 The primary sequence view, occupying the top 2/3 of the left-hand split.
 
-Flat-Chain Visual Folding: Displays the strict 1:1 Vec<Cue> flat chain. Cues chained via Auto-Continue or Auto-Follow are visually indented beneath their parent "GO" cue to create logical groupings without recursive data structures.
+Virtualized List: Built using @tanstack/react-virtual to handle thousands of cues smoothly without bloating the DOM.
 
-Rapid Navigation: Optimized for keyboard-centric navigation (Up/Down arrows to traverse the list, Enter to fire the standby cue).
+Flat-Chain Visual Folding: Displays the strict 1:1 Vec<Cue> flat chain stored in Rust. Cues chained via Auto-Continue or Auto-Follow are visually indented beneath their parent "GO" cue using simple CSS padding.
+
+Keyboard Navigation: Uses global DOM event listeners to capture Up/Down and Enter keys for rapid cue traversal and firing, ensuring focus isn't accidentally trapped inside a specific Mantine input.
 
 C. Context-Dependent Detail Panel (Bottom-Left Panel)
 
-The inspector view, occupying the bottom 1/3 of the left-hand split. It reactively updates based on what is selected in the Main Cuelist.
+The inspector view, built with Mantine UI form controls. Reactively updates based on the active selection state.
+
+Inputs: Utilizes Mantine's NumberInput (for precise durations/fades), Select (for routing dropdowns), and Slider (for volumes).
 
 Cue Selected: Displays trigger constraints (Pre-wait, Post-wait), designer notes, and base "Inherit From" target data.
 
-Task Selected: Displays explicit parameter editing controls (e.g., volume sliders, custom fade curves, and advanced multi-channel matrix routing).
-
-Nothing Selected: Reverts to Global Show settings (e.g., master show volume, default ASIO/WASAPI devices).
+Task Selected: Displays explicit parameter editing controls (e.g., volume sliders, custom fade curves, and advanced multi-channel matrix routing grids).
 
 D. Currently Playing Media Side Panel (Right Panel)
 
 A dedicated, persistent view of the audio engine's live state.
 
-Active Layer Telemetry: Iterates over active engine states to display currently playing cues.
+High-Performance Meters: To avoid React re-render bottlenecks, volume meters are drawn using direct DOM Refs (updating div height/width) or HTML5 <canvas>, bypassing the standard React state lifecycle.
 
-Live Scrubbing: Provides visual progress bars for temporal audio playback, allowing the operator to click and drag to scrub the playhead dynamically.
+Live Scrubbing: Provides visual progress bars for temporal audio playback.
 
-Live Meters: Real-time volume meters for the specific playing assets, operating at high refresh rates.
-
-Manual Override: Allows operators to manually intervene (e.g., dragging down the volume of a specific layer on the fly).
+Manual Override: Exposes quick-access volume sliders linked directly to active audio threads for live mixing adjustments.
 
 E. Status Bar (Bottom)
 
 System health and environment telemetry.
 
-Hardware Status: Displays the active low-latency driver.
+Hardware Status: Displays the active low-latency driver reported by the Rust backend.
 
-Performance Metrics: CPU and DSP thread usage, essential for monitoring custom audio pipeline headroom.
+Performance Metrics: CPU and DSP thread usage, essential for monitoring the Rust audio pipeline's real-time headroom.
 
-3. UI Framework & Data Binding Notes (Slint & Lock-Free Ringbuffers)
+3. UI Framework & IPC Boundaries (Tauri)
 
-With the pivot to Slint for the frontend and a custom cpal backend, the UI layer interacts with the audio engine through strict boundaries:
+With the React/Tauri architecture, this layout interacts with the Rust audio engine through strict boundaries:
 
-Declarative Layouts: The 3-panel layout is defined purely in .slint markup (using VerticalBox, HorizontalBox, and styling properties). This abstracts all CSS-like design logic away from the Rust execution code.
+State as Truth: The Vec<Cue> lives in Rust. When a user changes a volume slider in the Detail Panel, React fires a Tauri invoke('update_property', payload) command. Rust updates the state and emits a state_changed event back to React to trigger a UI re-render.
 
-Asynchronous Command Pushing: When an operator clicks "GO" or drags a volume slider in the Slint UI, the Rust backend captures the callback and pushes a struct into a ringbuf::Producer. The cpal audio thread instantly consumes this from the ringbuf::Consumer without acquiring locks.
+Telemetry Throttling: The Active Media Panel requires 30-60fps updates. The Rust audio thread batches peak volume data into a small payload and pushes it over the Tauri IPC via emit. A dedicated useAudioTelemetry() hook in React catches this event and updates the meter DOM nodes directly.
 
-Reactive Telemetry (The Media Panel): To display smooth 60fps audio meters without bogging down the UI, the audio thread pushes peak volume data into a return-path ringbuffer. The Slint frontend reads this buffer via a lightweight Timer polling mechanism and updates bound reactive properties, which naturally redraws the UI components in isolation.
+Native Application Feel: CSS rules (user-select: none, custom scrollbars, disabled overscroll bounce) are applied globally in the React root to ensure the WebView behaves identically to a compiled native application, hiding any standard browser behaviors.
