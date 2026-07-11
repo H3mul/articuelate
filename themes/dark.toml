@@ -16,20 +16,40 @@ mono = "monospace"
 font_size = 13
 
 [color]
-bg = "#1e1e1e"
-panel = "#252528"
-panel-alt = "#2d2d31"
-border = "#3a3a3f"
+bg = "#1a1b26"
+panel = "#1f2130"
+panel-alt = "#24283b"
+border = "#3b4261"
 
-fg = "#d4d4d4"
-text-dim = "#8a8a8a"
-text-faint = "#5a5a60"
+fg = "#c0caf5"
+text-dim = "#565f89"
+text-faint = "#3b4261"
 
-accent = "#3fb950"
-accent-dim = "#2f8a3b"
-lapce-blue = "#1890ff"
+accent = "#7aa2f7"
+accent-dim = "#5d7de0"
+lapce-blue = "#2ac3de"
 
-panic = "#f14c4c"
-panic-dim = "#b83030"
+panic = "#f7768e"
+panic-dim = "#c75b6e"
 
-meter = "#4ec95a"
+meter = "#9ece6a"
+
+[panel]
+# Default panel sizes (pixels).
+default_left_size = 220
+default_right_size = 260
+default_bottom_size = 240
+
+# Minimum panel width/height when resizing (pixels).
+min_left_size = 220
+min_right_size = 250
+min_bottom_size = 220
+
+# Drag handle thickness (pixels).
+handle_width = 6
+
+# Border width between panels (pixels).
+border_width = 2
+
+# Scroll bar width (pixels).
+scroll_bar_width = 6

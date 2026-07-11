@@ -19,8 +19,8 @@
 use floem::event::{Event, EventListener};
 use floem::kurbo::{Point, Size};
 use floem::reactive::{RwSignal, SignalGet, SignalUpdate, SignalWith, create_rw_signal};
-use floem::style::CursorStyle;
-use floem::views::{Decorators, container, empty, h_stack, stack, v_stack};
+use floem::style::{AlignItems, CursorStyle};
+use floem::views::{Decorators, container, empty, h_stack, scroll, v_stack};
 use floem::{AnyView, IntoView, View};
 
 use crate::theme::*;
@@ -28,7 +28,6 @@ use crate::theme::*;
 /// Where a registered window lives in the workspace.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum PanelLocation {
-    Main,
     Left,
     Right,
     Bottom,
@@ -63,11 +62,12 @@ pub struct PanelSystem {
 
 impl PanelSystem {
     pub fn new() -> Self {
+        let panel = &theme().panel;
         PanelSystem {
             sizes: create_rw_signal(PanelSizes {
-                left: 220.0,
-                right: 260.0,
-                bottom: 240.0,
+                left: panel.default_left_size,
+                right: panel.default_right_size,
+                bottom: panel.default_bottom_size,
             }),
             visible: create_rw_signal(PanelVisible {
                 left: true,
@@ -120,9 +120,40 @@ impl PanelSystem {
         let visible = self.visible;
         let available_size = self.available_size;
 
+        // Derive visibility and size from which panels were actually registered.
+        visible.update(|v| {
+            v.left = self.left.is_some();
+            v.right = self.right.is_some();
+            v.bottom = self.bottom.is_some();
+        });
+        sizes.update(|s| {
+            if self.left.is_none() {
+                s.left = 0.0;
+            }
+            if self.right.is_none() {
+                s.right = 0.0;
+            }
+            if self.bottom.is_none() {
+                s.bottom = 0.0;
+            }
+        });
+
         let main = self
             .main
             .expect("PanelSystem::build requires a Main window");
+
+        let main_view = container(
+            scroll(main.into_view())
+                .style(|s| s.size_full().min_size(0.0, 0.0))
+                .scroll_style(|s| s.handle_thickness(theme().panel.scroll_bar_width)),
+        )
+        .style(|s| {
+            s.flex_grow(1.0)
+                .flex_shrink(1.0)
+                .flex_basis(0.0) // Allows layout engine to shrink center view down below default content size
+                .min_size(0.0, 0.0)
+                .size_full()
+        });
 
         let left_view = self.left.map_or_else(
             || empty().into_any(),
@@ -139,14 +170,26 @@ impl PanelSystem {
             },
         );
 
-        let center_col = v_stack((main, bottom_view))
-            .style(|s| s.flex_col().flex_grow(1.0).min_width(0.0).min_height(0.0));
+        let center_row = h_stack((left_view, main_view, right_view)).style(|s| {
+            s.flex_row()
+                .flex_grow(1.0)
+                .min_height(0.0)
+                .height_full()
+                .width_full()
+        });
 
-        let center_row = h_stack((left_view, center_col, right_view))
-            .style(|s| s.flex_row().flex_grow(1.0).min_height(0.0))
+        let workspace_area = v_stack((center_row, bottom_view))
+            .style(|s| {
+                s.flex_col()
+                    .flex_grow(1.0)
+                    .flex_basis(0.0)
+                    .min_height(0.0)
+                    .height_full()
+                    .width_full()
+            })
             .on_resize(move |rect| available_size.set(rect.size()));
 
-        v_stack((toolbar.into_any(), center_row, status_bar.into_any())).style(|s| {
+        v_stack((toolbar.into_any(), workspace_area, status_bar.into_any())).style(|s| {
             s.flex_col()
                 .width_full()
                 .height_full()
@@ -165,51 +208,75 @@ fn panel_container(
 ) -> impl View {
     let handle = resize_handle(location, sizes, available_size);
 
-    let content = container(content.into_view()).style(|s| s.size_pct(100.0, 100.0).flex_col());
+    let content = container(
+        scroll(content.into_view())
+            .style(|s| s.size_full().min_size(0.0, 0.0))
+            .scroll_style(|s| s.handle_thickness(theme().panel.scroll_bar_width)),
+    )
+    .style(|s| {
+        s.flex_grow(1.0)
+            .min_size(0.0, 0.0)
+            .width_full()
+            .height_full()
+            .align_items(AlignItems::Stretch)
+    });
 
     let inner: AnyView = match location {
-        PanelLocation::Left => stack((content, handle))
-            .style(|s| s.flex_row().height_pct(100.0))
+        PanelLocation::Left => h_stack((content, handle))
+            .style(|s| s.size_full().min_size(0.0, 0.0))
             .into_any(),
-        PanelLocation::Right => stack((content, handle))
-            .style(|s| s.flex_row().height_pct(100.0))
+        PanelLocation::Right => h_stack((handle, content))
+            .style(|s| s.size_full().min_size(0.0, 0.0))
             .into_any(),
-        PanelLocation::Bottom => stack((content, handle))
-            .style(|s| s.flex_col().width_pct(100.0))
+        PanelLocation::Bottom => v_stack((handle, content))
+            .style(|s| {
+                s.size_full()
+                    .min_size(0.0, 0.0)
+                    .align_items(AlignItems::Stretch)
+            })
             .into_any(),
-        PanelLocation::Main => content.style(|s| s.size_pct(100.0, 100.0)).into_any(),
     };
 
     let is_shown = move || match location {
         PanelLocation::Left => visible.with(|v| v.left),
         PanelLocation::Right => visible.with(|v| v.right),
         PanelLocation::Bottom => visible.with(|v| v.bottom),
-        PanelLocation::Main => true,
     };
 
-    inner.style(move |s| {
-        let s = match location {
+    container(inner).style(move |s| {
+        let bw = theme().panel.border_width as f32;
+        let s = s.apply_if(!is_shown(), |s| s.display(floem::style::Display::None));
+
+        match location {
             PanelLocation::Left => s
                 .width(sizes.with(|x| x.left as f32))
-                .height_pct(100.0)
-                .border_right(1.0)
+                .height_full()
+                .min_height(0.0)
+                .flex_shrink(1.0)
+                .flex_grow(0.0)
+                .border_right(bw)
                 .border_color(theme().color.border)
                 .background(theme().color.panel),
             PanelLocation::Right => s
                 .width(sizes.with(|x| x.right as f32))
-                .height_pct(100.0)
-                .border_left(1.0)
+                .height_full()
+                .min_height(0.0)
+                .flex_shrink(1.0)
+                .flex_grow(0.0)
+                .border_left(bw)
                 .border_color(theme().color.border)
                 .background(theme().color.panel),
             PanelLocation::Bottom => s
                 .height(sizes.with(|x| x.bottom as f32))
-                .width_pct(100.0)
-                .border_top(1.0)
+                .width_full()
+                .min_width(0.0)
+                .flex_shrink(1.0)
+                .flex_grow(0.0)
+                .align_items(AlignItems::Stretch)
+                .border_top(bw)
                 .border_color(theme().color.border)
                 .background(theme().color.panel),
-            PanelLocation::Main => s.size_pct(100.0, 100.0),
-        };
-        s.apply_if(location != PanelLocation::Main && !is_shown(), |s| s.hide())
+        }
     })
 }
 
@@ -235,29 +302,36 @@ fn resize_handle(
                 let available_size = available_size.get_untracked();
                 let current_sizes = sizes.get_untracked();
 
+                let panel_cfg = &theme().panel;
                 let new = match location {
                     PanelLocation::Left => {
                         let new_size =
                             current_sizes.left - pointer_event.pos.x + drag_start_point.x;
-                        new_size.clamp(140.0, (available_size.width - 140.0).max(140.0))
+                        new_size.clamp(
+                            panel_cfg.min_left_size,
+                            (available_size.width - current_sizes.right)
+                                .max(panel_cfg.min_left_size),
+                        )
                     }
                     PanelLocation::Right => {
                         let new_size =
                             current_sizes.right - pointer_event.pos.x + drag_start_point.x;
-                        new_size.clamp(140.0, (available_size.width - 140.0).max(140.0))
+                        new_size.clamp(
+                            panel_cfg.min_right_size,
+                            (available_size.width - current_sizes.left)
+                                .max(panel_cfg.min_right_size),
+                        )
                     }
                     PanelLocation::Bottom => {
                         let new_size =
                             current_sizes.bottom - pointer_event.pos.y + drag_start_point.y;
-                        new_size.clamp(140.0, (available_size.height - 140.0).max(140.0))
+                        new_size.max(panel_cfg.min_bottom_size)
                     }
-                    PanelLocation::Main => 0.0,
                 };
                 sizes.update(|s| match location {
                     PanelLocation::Left => s.left = new,
                     PanelLocation::Right => s.right = new,
                     PanelLocation::Bottom => s.bottom = new,
-                    PanelLocation::Main => {}
                 });
             }
         }
@@ -269,27 +343,35 @@ fn resize_handle(
     .style(move |s| {
         let dragging = drag_start.get().is_some();
         let is_bottom = location == PanelLocation::Bottom;
-        s.absolute()
-            .apply_if(is_bottom, |s| {
-                s.width_pct(100.0).height(4.0).margin_top(-2.0)
-            })
-            .apply_if(!is_bottom, |s| {
-                s.width(4.0)
-                    .height_pct(100.0)
-                    .apply_if(location == PanelLocation::Left, |s| {
-                        s.margin_left(sizes.with(|x| x.left as f32) - 2.0)
-                    })
-                    .apply_if(location == PanelLocation::Right, |s| s.margin_left(-2.0))
-            })
-            .apply_if(dragging, |s| {
-                s.background(theme().color.accent)
-                    .apply_if(is_bottom, |s| s.cursor(CursorStyle::RowResize))
-                    .apply_if(!is_bottom, |s| s.cursor(CursorStyle::ColResize))
-            })
-            .hover(|s| {
-                s.background(theme().color.accent)
-                    .apply_if(is_bottom, |s| s.cursor(CursorStyle::RowResize))
-                    .apply_if(!is_bottom, |s| s.cursor(CursorStyle::ColResize))
-            })
+        let hw = theme().panel.handle_width as f32;
+        let half_hw = hw / 2.0 - theme().panel.border_width as f32;
+
+        s.apply_if(is_bottom, |s| {
+            s.width_pct(100.0)
+                .height(hw)
+                .margin_top(-half_hw)
+                .margin_bottom(-half_hw)
+        })
+        .apply_if(!is_bottom, |s| {
+            s.width(hw)
+                .height_pct(100.0)
+                .apply_if(location == PanelLocation::Left, |s| {
+                    s.margin_right(-half_hw).margin_left(-half_hw)
+                })
+                .apply_if(location == PanelLocation::Right, |s| {
+                    s.margin_left(-half_hw).margin_right(-half_hw)
+                })
+        })
+        .apply_if(dragging, |s| {
+            s.background(theme().color.accent)
+                .apply_if(is_bottom, |s| s.cursor(CursorStyle::RowResize))
+                .apply_if(!is_bottom, |s| s.cursor(CursorStyle::ColResize))
+        })
+        .hover(|s| {
+            s.background(theme().color.accent)
+                .apply_if(is_bottom, |s| s.cursor(CursorStyle::RowResize))
+                .apply_if(!is_bottom, |s| s.cursor(CursorStyle::ColResize))
+        })
+        .z_index(10)
     })
 }

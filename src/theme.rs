@@ -172,6 +172,17 @@ define_theme! {
         mono: (String, "monospace".to_string()),
         // font_size: (f64, 13.0),
     },
+    panel: {
+        default_left_size: (f64, 220.0),
+        default_right_size: (f64, 260.0),
+        default_bottom_size: (f64, 240.0),
+        handle_width: (f64, 4.0),
+        min_left_size: (f64, 140.0),
+        min_right_size: (f64, 180.0),
+        min_bottom_size: (f64, 120.0),
+        border_width: (f64, 1.0),
+        scroll_bar_width: (f64, 4.0),
+    },
 }
 
 // --- resolution -----------------------------------------------------------
@@ -213,10 +224,17 @@ mod tests {
     #[test]
     fn parses_dark_toml_with_defaults() {
         let t = parse_theme(include_str!("../themes/dark.toml"));
-        assert_eq!(t.font.font_size, 13.0);
         assert_eq!(t.font.mono, "monospace");
         assert_eq!(t.color.bg, Color::rgb8(0x1e, 0x1e, 0x1e));
         assert_eq!(t.color.accent, Color::rgb8(0x3f, 0xb9, 0x50));
+        assert_eq!(t.panel.default_left_size, 220.0);
+        assert_eq!(t.panel.default_right_size, 260.0);
+        assert_eq!(t.panel.default_bottom_size, 240.0);
+        assert_eq!(t.panel.handle_width, 4.0);
+        assert_eq!(t.panel.min_left_size, 140.0);
+        assert_eq!(t.panel.min_right_size, 180.0);
+        assert_eq!(t.panel.min_bottom_size, 120.0);
+        assert_eq!(t.panel.border_width, 1.0);
     }
 
     #[test]
@@ -225,7 +243,10 @@ mod tests {
         assert_eq!(t.color.bg, Theme::default().color.bg);
         assert_eq!(t.color.accent, Theme::default().color.accent);
         assert_eq!(t.font.mono, Theme::default().font.mono);
-        assert_eq!(t.font.font_size, Theme::default().font.font_size);
+        assert_eq!(
+            t.panel.default_left_size,
+            Theme::default().panel.default_left_size
+        );
     }
 
     #[test]
@@ -235,8 +256,15 @@ mod tests {
     }
 
     #[test]
-    fn unparseable_font_size_falls_back_to_default() {
-        let t = parse_theme("[font]\nfont_size = \"big\"\n");
-        assert_eq!(t.font.font_size, Theme::default().font.font_size);
+    fn panel_values_parsed_from_toml() {
+        let t = parse_theme("[panel]\nhandle_width = 8\nmin_left_size = 200\nborder_width = 2\n");
+        assert_eq!(t.panel.handle_width, 8.0);
+        assert_eq!(t.panel.min_left_size, 200.0);
+        assert_eq!(t.panel.border_width, 2.0);
+        // defaults kept for unset fields
+        assert_eq!(
+            t.panel.default_left_size,
+            Theme::default().panel.default_left_size
+        );
     }
 }

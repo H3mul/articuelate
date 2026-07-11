@@ -9,8 +9,8 @@ use floem::event::EventPropagation;
 use floem::peniko::Color;
 use floem::reactive::{Memo, RwSignal, SignalGet, SignalUpdate, SignalWith, create_memo};
 use floem::views::{
-    Decorators, VirtualDirection, VirtualItemSize, container, h_stack, label, list, scroll, text,
-    v_stack, virtual_list,
+    Decorators, VirtualDirection, VirtualItemSize, container, h_stack, label, list, text, v_stack,
+    virtual_list,
 };
 use lucide_floem::Icon;
 
@@ -63,7 +63,7 @@ pub fn view(
 
     v_stack((
         header,
-        scroll(list).style(|s| s.width_full().flex_grow(1.0).min_height(0.0)),
+        list.style(|s| s.width_full().flex_grow(1.0).min_height(0.0)),
     ))
     .style(|s| {
         s.flex_col()
