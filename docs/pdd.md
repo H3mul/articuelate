@@ -1,94 +1,87 @@
-Product Definition Document (PDD)
+# **Product Definition Document (PDD)**
 
-Project: Open-Source Audio Cue System
-Target Platforms: Windows, macOS, & Linux (Native Desktop)
+**Project:** Open-Source Audio Cue System
 
-1. Executive Summary
+**Target Platforms:** Windows, macOS, & Linux (Native Desktop)
 
-This project aims to create a modern, cross-platform, open-source audio cue system designed specifically for professional live show control (theatre, immersive experiences, live events).
+## **1\. Executive Summary**
 
-Built purely in Rust, it delivers a deterministic, event-driven state machine with the ultra-low memory footprint and extreme speed of a native application.
+This project aims to create a modern, cross-platform, open-source audio cue system designed specifically for professional live show control.
 
-2. Core Philosophy & Data Architecture
+Built purely in Rust, it delivers a deterministic, event-driven state machine with the ultra-low memory footprint and extreme speed of a native application. It achieves this using a dedicated real-time DSP engine and a native reactive frontend, coordinated by a dynamic, asynchronous execution orchestrator.
 
-The system embraces a Commands Over Time philosophy, utilizing a Strict 1:1 Flat Chain data model to maximize execution safety.
+## **2\. Core Philosophy & Data Architecture**
 
-2.1 The Strict 1:1 Data Model
+The system utilizes an **Async Actor Model** for execution, meaning cues operate as independent async tasks that dynamically read from a live "Source of Truth" blueprint. This guarantees that UI edits take effect instantly, even while a sequence is running.
 
-1 Cue = 1 Action = 1 Targetable Object.
+### **2.1 Cues (User Intent)**
 
-The show is stored and executed as a single, flat Vec<Cue>.
+- The show is stored as a flat Vec\<Cue\>.
+- A Cue is a data container holding user settings (Volume, File Path, Pre-Waits, Post-Waits).
+- **Trigger Relationships:** Cues define their relationship to other cues via Playhead (Manual GO), With (Target Cue), or After (Target Cue).
+- **Inherit From:** A cue can inherit data from a master template. Overrides are stored via Option\<T\> and resolved dynamically during the cue's execution.
 
-Composition is achieved by chaining cues using Auto-Continue/Auto-Follow triggers.
+### **2.2 The Async Actor Model (Runtime Execution)**
 
-Targeting: Fades and Stops unambiguously target the explicit ID of the Cue that generated the audio layer.
+- **The Orchestrator:** Instead of pre-compiling a rigid sequence of tasks, an Event Orchestrator routes lifecycle events. When "GO" is pressed, the Orchestrator spawns a lightweight async task (an "Actor") for the target cue.
+- **Dynamic Hydration:** During its lifecycle (e.g., before and after a pre-wait), the Actor queries an atomic ArcSwap reference to the show file. This means any UI edits made during a wait timer are instantly applied when the timer finishes.
+- **Cascading Events:** When an Actor begins or finishes its primary action, it emits an event (ActionStarted or ActionFinished). The Orchestrator hears this and instantly spawns new Actors for any cues configured to trigger With or After that cue.
 
-2.2 The "Inherit From" (Templating) Pattern
+### **2.3 The Linear Playhead & "Early GO" Preemption**
 
-Solves cue duplication. Cue 10 can inherit from Cue 1.
+- The Playhead is a strict, linear cursor. When "GO" is pressed, the playhead fires the selected cue and immediately jumps to the next _independent_ cue (skipping over With cues, and stopping on After or Manual cues).
+- **Preemption:** If the operator hits "GO" early while the playhead is sitting on a pending After cue, the Orchestrator acts as an override, instantly aborting the wait listeners and firing the cue.
 
-Any property modified in Cue 10 is overlaid on top of Cue 1's data via Rust's Option<T>.
+### **2.4 State-Squashing (Rehearsal Mode)**
 
-At runtime, Cue 10 fully owns its execution state, isolated from the master.
+- Skipping cues during rehearsal is achieved by fast-forwarding the Async Actors: tokio::time::sleep calls are bypassed, and DSPCommand::Play instructions are suppressed until the engine's internal time catches up to the target timestamp, snapping the DSP to the correct state.
 
-2.3 State-Squashing (Rehearsal Mode)
+## **3\. Technology Stack & Threading Model**
 
-When jumping out of sequence, skipped cues are evaluated instantly.
+The application utilizes a strict **Tri-Thread Architecture** to guarantee microsecond audio stability while maintaining fluid UI and complex logic evaluation.
 
-Non-temporal tasks are "squashed" and applied immediately via lock-free messages to the audio thread. Temporal constraints are bypassed.
+### **3.1 Frontend & State (The UI Thread)**
 
-3. Technology Stack (Pure Native Rust)
+- **Framework:** **Floem**. A native, retained-mode, reactive GUI framework using fine-grained reactive signals (RwSignal).
+- **Role:** Acts as the "Dumb View". It handles user input and visual layout.
+- **Data Flow:** When the user edits a cue, the UI publishes a new Arc\<WorkspaceState\> and atomically swaps the global ArcSwap pointer. It pushes discrete events (like Intent::GoPressed) to the Execution Engine via lock-free channels.
 
-The application unifies the frontend and backend in a single, lightweight Rust binary, connected by reactive signals and lock-free buffers.
+### **3.2 Execution Engine (Background Async Runtime)**
 
-3.1 Core Audio Backend (Real-Time DSP)
+- **Framework:** **Tokio** (or async-std).
+- **Role:** The "Controller". It runs entirely off the main UI thread to avoid OS window-interaction freezing. It owns the Playhead logic and orchestrates the Async Cue Actors.
+- **Data Flow:** Ingests UI intents, reads the ArcSwap blueprint, and pushes raw DSP commands (Play(Node), SetVolume(Node, Vol)) to the audio thread. It broadcasts its current state (playhead position, active timers) back to the UI via a tokio::sync::watch channel.
 
-Audio Hardware: cpal used directly for low-latency driver access (ASIO/WASAPI/JACK/CoreAudio).
+### **3.3 Core Audio Backend (Real-Time DSP Thread)**
 
-Audio DSP Pipeline: Custom pipeline (fundsp or manual slices) for crosspoint matrix mixing, panning, and sample-accurate triggers.
+- **Hardware:** cpal directly locks low-latency drivers (ASIO/WASAPI/CoreAudio).
+- **Role:** The "Muscle". A custom node-based pipeline handling crosspoint matrix mixing. It has zero knowledge of "Cues" or "Playheads".
+- **Data Flow:** Communicates with the Execution Engine _exclusively_ via lock-free ringbuffers (ringbuf), ensuring the audio deadline (e.g., 2.6ms) is never compromised.
+- **Direct Telemetry:** High-frequency media telemetry (playhead progress, peak volume meters) is pushed directly from the DSP thread back to the UI thread via a return ringbuffer, completely bypassing the Execution Engine.
 
-Thread Communication: Lock-free ringbuffers (ringbuf or rtrb) connect the UI thread to the real-time cpal audio thread.
+## **4\. User Interface (UI) Specification**
 
-Serialization: Serde handles project file I/O (JSON/YAML).
+The workspace provides a **Unified Three-Pane Layout** utilizing a dockable, collapsible panel system modeled after the **Lapce** code editor.
 
-3.2 Frontend (Floem)
+### **4.1 Pane 1: The Unified Cuelist (Main View)**
 
-Framework: Floem. A native, retained-mode, reactive GUI framework.
+- Renders the flat chain using Floem's virtualized lists. Linked With/After cues are visually folded under their parent triggers.
 
-State Management: Fine-grained reactive signals (RwSignal). UI components surgically update only when their bound data changes.
+### **4.2 Pane 2: Contextual Detail Panel (Bottom Panel)**
 
-Aesthetic Reference: Modeled aggressively after the Lapce editor. Features a dark-mode, modular pane system, crisp typography, and virtualized list rendering.
+- Collapsible panel containing flat sliders, number inputs, and routing toggle-grids. Modifying these instantly updates the global ArcSwap state.
 
-4. User Interface (UI) Specification
+### **4.3 Pane 3: Active Media Panel (Right Sidebar)**
 
-The workspace provides a Unified Three-Pane Layout utilizing a dockable, collapsible panel system.
+- Displays real-time engine telemetry (progress bars and meters). High-frequency updates bypass full UI redraws via Floem's surgical signal bindings, driven by the DSP return-ringbuffer.
 
-4.1 Pane 1: The Unified Cuelist (Main View)
+## **5\. MVP Development Roadmap**
 
-Renders the flat chain using Floem's virtual_list. Auto-Continue/Follow cues are visually indented under parent "GO" cues.
-
-4.2 Pane 2: Contextual Detail Panel (Bottom Panel)
-
-Reacts to the currently selected cue/task signal. Contains clean, Lapce-style flat sliders, text inputs, and matrix routing toggle-grids. Can be quickly collapsed/hidden.
-
-4.3 Pane 3: Active Media Panel (Right Sidebar)
-
-Displays real-time engine telemetry. High-frequency updates bypass full UI redraws via Floem's surgical signal updates.
-
-5. MVP Development Roadmap
-
-Phase 1: Backend State & DSP (~3 Weeks)
-
-Define Rust data models, establish cpal streams, build the matrix-mixing pipeline, and implement the lock-free ringbuffer bridge.
-
-Phase 2: Floem State & Routing (~1.5 Weeks)
-
-Wrap the Phase 1 structs in Floem RwSignals. Build the application shell and Lapce-style layout system (Splitters, Sidebars).
-
-Phase 3: GUI Implementation (~2.5 Weeks)
-
-Build the virtualized Cuelist, the inspector detail forms, and the active media meters.
-
-Phase 4: Serialization & Polish (~1 Week)
-
-Implement file saving/loading via Serde. Polish custom styling and keyboard shortcuts.
+- **Phase 1: DSP Engine & Ringbuffers (\~2.5 Weeks)**
+    - Establish cpal streams, build the matrix-mixing DSP pipeline, and implement the lock-free ringbuffer command receiver and telemetry publisher.
+- **Phase 2: Event Orchestrator & Async Actors (\~2 Weeks)**
+    - Define the Cue structs and global ArcSwap state. Build the Tokio orchestrator and the execute\_cue\_lifecycle async actor loops. Implement the linear Playhead and "Early GO" logic.
+- **Phase 3: Floem GUI Implementation (\~2.5 Weeks)**
+    - Bridge the Phase 2 watch channels to Floem RwSignals. Build the Lapce-style layout, virtualized Cuelist, and inspector forms.
+- **Phase 4: Serialization & Polish (\~1 Week)**
+    - Implement Serde file I/O for the workspace and finalize UI keyboard shortcuts.

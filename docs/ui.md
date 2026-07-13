@@ -1,125 +1,68 @@
-# UI Layout & Interface Specification (Lapce-Inspired)
+# **UI Layout & Interaction Specification: Unified Two-Pane Workspace**
 
-This document defines the graphical interface architecture for our audio cue system. The application utilizes a Lapce-inspired modular pane layout. This ensures a native, hyper-responsive feel while keeping complex data cleanly organized.
+This document defines the interface architecture, visual layout, and the state-exchange mechanisms connecting the Floem UI to the Execution Engine.
 
-1. Global Application Layout
+## **1\. The Unified Two-Pane Layout Concept**
 
-The window is structured like a modern code editor, maximizing screen real estate for the operator while keeping deep-dive parameters accessible in collapsible docks.
+The workspace is divided into two primary logical panes, maintaining a strict "Source of Truth" separation where the UI simply renders the state provided by the Execution Engine.
 
-ASCII Layout Schematic
+\+-------------------------------------------------------------+-----------------------+  
+| \[Search: "wind" \] \[ Panic \] | DETAIL PANEL |  
+\+-------------------------------------------------------------+ |  
+| \> CUE 1.0 \- Storm Intro (Go) \[0.0s\] \[10.0s\] | |  
+| \- Play: Wind\_Loop.wav (Vol: \-12dB, Loop) | \[Context: Task 1.1\] |  
+| \- Play: Rain\_Heavy.wav (Vol: \-8dB, Loop) | |  
+| \* Fade: BGM to \-24dB (Dur: 3.0s) | Target: BGM |  
+| v CUE 2.0 \- Thunder Strike (Go) \[1.5s\] \[ 0.0s\] | Property: Volume |  
+| \> CUE 3.0 \- Storm Outro (Auto-Follow) \[0.0s\] \[ 5.0s\] | Target Vol: \[ \-24 \] |  
+| | Duration: \[ 3.0 \] |  
+\+-------------------------------------------------------------+-----------------------+  
+| STATUS BAR: \[Output Levels (Active Media Telemetry)\] | Mode: Edit (Ctrl+E) |  
+\+-------------------------------------------------------------+-----------------------+
 
-+-----------------------------------------------------------------------------+
-| [||] (Pause) [>] (GO) [<] (BACK) [Search: "wind" ] [ PANIC ] | <- TITLE / TOOLBAR
-+----------------------------------------------------+------------------------+
-| | |
-| > CUE 1.0 - Storm Intro (Go) | ACTIVE MEDIA | <- RIGHT SIDEBAR
-| - Play: Wind_Loop.wav (Vol: -12dB, Loop) | | (Collapsible)
-| - Play: Rain_Heavy.wav (Vol: -8dB, Loop) | > CUE 1.0 (Wind_Loop) |  
-| * Fade: BGM to -24dB (Dur: 3.0s) | [======-----] -12dB |
-| v CUE 2.0 - Thunder Strike (Go) | |
-| > CUE 3.0 - Storm Outro (Auto-Follow) | > CUE 1.0 (Rain) |
-| | [========---] -8dB |
-| | |
-| MAIN CUELIST | |
-| (Virtualized List) | |
-| | |
-+----------------------------------------------------+ |
-| | |
-| [Context: Task 1.1 - Wind_Loop] | |
-| Target: BGM Property: Volume | |
-| Target Vol: [-24] Duration: [3.0] | |
-| Matrix: [In L -> Out 1, 2] [In R -> Out 3, 4] | |
-| | |
-| BOTTOM PANEL | |
-| (Collapsible) | |
-+----------------------------------------------------+------------------------+
-| STATUS: Connected (ASIO: Focusrite USB) | CPU: 4% DSP: 12% | <- STATUS BAR
-+-----------------------------------------------------------------------------+
+## **2\. State Exchange Mechanisms**
 
-2. Component Breakdown & Floem Logic
+To maintain thread safety and high performance, the UI interacts with the system using four distinct data conduits.
 
-A. The Toolbar (Top)
+### **A. The Blueprint Update (UI ![][image1] Engine)**
 
-Design: Flat, borderless icon buttons.
+- **Mechanism:** ArcSwap\<WorkspaceState\>
+- **Flow:** When the user modifies a cue in the Detail Panel, the UI constructs a complete new WorkspaceState, wraps it in an Arc, and performs an atomic swap. This is the **only** way the Execution Engine receives data updates. The UI does not push partial updates; it pushes the full valid state of the show file.
 
-Logic: Clicking "GO" triggers a signal that sends a lock-free message to the audio thread to evaluate the next cue index.
+### **B. Discrete Intents (UI ![][image1] Engine)**
 
-B. The Main Cuelist (Center / Main View)
+- **Mechanism:** mpsc::Sender\<UserIntent\>
+- **Flow:** High-level operator actions (GO, Panic, ScrubMedia, JumpPlayhead) are sent as discrete messages. These are processed asynchronously by the Execution Orchestrator, ensuring the UI remains perfectly responsive during show execution.
 
-Design: High-contrast text on a dark charcoal background. Selection states are highlighted with a subtle accent color (e.g., Lapce Blue or Theatre Green).
+### **C. Execution State Watch (Engine ![][image1] UI)**
 
-Floem Implementation: Uses Floem's virtual_list. The flat Vec<Cue> is mapped to a signal. Expanding/collapsing Auto-Continue chains dynamically updates the virtual list's viewport calculation.
+- **Mechanism:** tokio::sync::watch::Receiver\<Arc\<ExecutionState\>\>
+- **Flow:** The Execution Engine pushes a new snapshot of execution progress (playhead position, running cue IDs, and timer values) whenever the state changes.
+- **UI Ingestion:** The UI thread hosts a non-blocking background listener that updates a Floem RwSignal\<Arc\<ExecutionState\>\>. The cuelist reactively binds to this signal to highlight active rows, update progress bars, and move the playhead cursor.
 
-C. Context-Dependent Detail Panel (Bottom Panel)
+### **D. Media Telemetry (DSP ![][image1] UI)**
 
-Design: Divided into logical tabs (e.g., "General", "Audio Routing", "Fades").
+- **Mechanism:** Lock-free Ringbuffer
+- **Flow:** High-frequency playback metadata (playhead position per file, peak volume levels) bypasses the Execution Engine entirely. It is pushed directly from the DSP thread to a UI-side RwSignal\<HashMap\<CueId, PlaybackState\>\>. This ensures 60fps responsiveness for meters and progress bars without saturating the async runtime.
 
-Lapce UX: Can be toggled open or closed with a keyboard shortcut (e.g., Ctrl+J) or dragging the splitter down to the bottom.
+## **3\. UI Selection & Inspector Logic**
 
-Component Strategy: No need for complex visual knobs. We use sleek, horizontal number sliders (similar to dragging a number value in Blender or Unity) and toggle-button grids for the audio routing matrix.
+The Detail Panel is governed by the SelectedItem enum, acting as a router that determines which data from the ArcSwap snapshot to bind to the input widgets.
 
-D. Currently Playing Media (Right Sidebar)
+\#\[derive(Debug, Clone, PartialEq)\]  
+pub enum SelectedItem {  
+None,  
+Cue { cue\_id: String },  
+Task { cue\_id: String, task\_index: usize },  
+}
 
-Design: A dedicated monitor for live telemetry.
+- **Interaction Logic:** Selecting an item updates the selected\_item signal. The Detail Panel reactively re-renders to reflect the properties of the selected cue or task.
+- **Commit Cycle:** Input widgets (sliders, text boxes) inside the Detail Panel perform local edits; upon the user finishing an interaction (e.g., on\_blur or on\_release), the UI triggers an ArcSwap commit of the updated workspace state.
 
-Floem Implementation: This is where Floem shines. A timer running at 30/60fps pulls telemetry from the audio return-ringbuffer and updates a specific RwSignal<Vec<MeterData>>. Only the UI nodes bound to this signal (the green meter bars) update, leaving the rest of the UI untouched and saving CPU.
+## **4\. Usability Design Constraints**
 
-E. Status Bar (Bottom)
+1. **Virtualized Lists:** The main Cuelist uses Floem's virtual\_list to handle massive show files, ensuring that the Arc\<ExecutionState\> watch updates only cause the visible portion of the list to re-render.
+2. **Keyboard-First Focus:** Navigation is mapped directly to the SelectedItem selection state. Moving focus with Up/Down arrows updates the selected item, instantly causing the Detail Panel to display the context of the new selection.
+3. **Playback Lock:** During active show playback, the UI enforces a "Lock Edit" mode on structural cues to prevent race conditions in the ArcSwap commit cycle, while still allowing non-structural parameter tweaks via direct DSP-bound signals where safe.
 
-Design: Minimalist footer displaying active drivers, sample rate, and DSP load.
-
-# Deep Dive: Floem & Lapce-Inspired UI Architecture
-
-This document evaluates the pivot to Floem for the GUI framework, using the Lapce code editor as the primary reference for styling, window management, and component architecture.
-
-1. Why Floem? (The Native Reactive Advantage)
-
-Floem sits in a unique "sweet spot" in the Rust GUI ecosystem.
-
-Iced requires diffing the entire UI view tree on every state change.
-
-Egui requires redrawing the entire UI on every frame (Immediate Mode).
-
-Floem uses Fine-Grained Reactive Signals. You wrap your state in signals (e.g., RwSignal<f32>). When a signal changes, Floem updates only the specific DOM node bound to that signal.
-
-Audio Meter Performance
-
-This reactive model is the holy grail for audio software. A high-frequency ringbuffer from the cpal audio thread can push peak volume values to a Floem RwSignal. The UI will update only the green meter bars at 60fps, utilizing virtually zero CPU, while the rest of the application remains entirely asleep.
-
-2. Emulating Lapce (The Aesthetic & Layout Paradigm)
-
-Lapce is widely praised for feeling incredibly snappy, native, and visually crisp. By studying Lapce's source code, we gain a massive head start on building our Audio Cue System.
-
-A. The Dockable Panel System
-
-Lapce uses a highly modular panel architecture (Left Sidebar, Right Sidebar, Bottom Panel, Main Editor area) with draggable splitters.
-
-Our Implementation: We map our 3-panel layout directly into a Lapce-style shell.
-
-Main Cuelist: Acts as the central "Editor" area.
-
-Detail Inspector: Sits in the collapsible "Bottom Panel".
-
-Active Media / Meters: Sits in the collapsible "Right Sidebar".
-
-Operators can hide the Detail Panel during a live show using a single keystroke (like Cmd/Ctrl + J in VS Code/Lapce), leaving only the Cuelist and Meters.
-
-B. Theming & Styling
-
-Floem uses a Rust-based, CSS-like styling API. We will lift Lapce's dark-mode aesthetic:
-
-Deep charcoal backgrounds (#1E1E1E or Lapce's specific themes).
-
-Monospace font integration for timers, cue numbers, and routing grids.
-
-Crisp, 1px borders and subtle hover states without heavy web-like drop shadows.
-
-C. The Virtualized List
-
-Lapce handles massive code files using virtualized (lazy) rendering. We will use Floem's virtual_list component to render the Vec<Cue> flat-chain. A show file with 5,000 cues will render instantly and consume negligible memory.
-
-3. Development Trade-offs
-
-The Challenge: Floem is young. You won't have a library of pre-built "Audio Knobs" like you would in React or egui.
-
-The Solution: For the MVP, we rely on standard UI paradigms (horizontal sliders, number inputs, dropdowns, routing matrices built from toggle buttons) rather than skeuomorphic knobs. This perfectly matches the sleek, flat, developer-centric aesthetic of Lapce anyway.
+[image1]: data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABgAAAAdCAYAAACwuqxLAAABpklEQVR4Xp1VvU7DMBhMJCSQ+BESVBFKYielUh+gPAwTIwMTOyNiZEIsXRgYeQFejJ0vToL9+c5JxEmunbv7/mK1zfJM4D40Qsp7BlZvE1COPBkAxVKYFEeE3UGnYROpbINnlFM2wIyRy4xV5WNKj8TCQYR8JBGcOTHjV1h24QDodiHCuKZpjowx96vV5Ql4ABHLJ9QmecqttS9SZBey/2t+CPDBfSJjzU6KvMrxYLQ6sAKpTkMQJZdX9WiNuevOIP59DLuYz6WjKyOr2+PF+PX6Wt6S+ZDz22azOfPpIxRFcWyNfRLjXhLtu10vQ7h+SYFv2X9kPUuRQzXLOAbM56AvTY08oK7rG0n8VZZlReQ5aHscLEkvJPln07YWxBigA4GQ5A9yb7eeIUGEQhBTK180ubP3qqpKRxCPw8jPvWuN3rHdbk9lU87JsB7k94cQQA3wfOSArsNpAOlRJ/2oAkGQ9qACjH4VvuHJ8ThSXsjHCZIgIvwj+UMPvWlqOQG6A2d1Q7rRJJxEOk2BexYlWGRCOQwDMUuPGT6xOI05R1h+ySDEH+IXCpIokiS2F0IAAAAASUVORK5CYII=
