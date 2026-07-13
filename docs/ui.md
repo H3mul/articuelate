@@ -24,17 +24,17 @@ The workspace is divided into two primary logical panes, maintaining a strict "S
 
 To maintain thread safety and high performance, the UI interacts with the system using four distinct data conduits.
 
-### **A. The Blueprint Update (UI ![][image1] Engine)**
+### **A. The Blueprint Update (UI Engine)**
 
 - **Mechanism:** ArcSwap\<WorkspaceState\>
 - **Flow:** When the user modifies a cue in the Detail Panel, the UI constructs a complete new WorkspaceState, wraps it in an Arc, and performs an atomic swap. This is the **only** way the Execution Engine receives data updates. The UI does not push partial updates; it pushes the full valid state of the show file.
 
-### **B. Discrete Intents (UI ![][image1] Engine)**
+### **B. Discrete Intents (UI Engine)**
 
 - **Mechanism:** mpsc::Sender\<UserIntent\>
 - **Flow:** High-level operator actions (GO, Panic, ScrubMedia, JumpPlayhead) are sent as discrete messages. These are processed asynchronously by the Execution Orchestrator, ensuring the UI remains perfectly responsive during show execution.
 
-### **C. Execution State Watch (Engine ![][image1] UI)**
+### **C. Execution State Watch (Engine UI)**
 
 - **Mechanism:** tokio::sync::watch::Receiver\<Arc\<ExecutionState\>\>
 - **Flow:** The Execution Engine pushes a new snapshot of execution progress (playhead position, running cue IDs, and timer values) whenever the state changes.

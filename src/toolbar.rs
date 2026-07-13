@@ -9,7 +9,9 @@ use floem::peniko::Color;
 use floem::reactive::{RwSignal, SignalGet, SignalUpdate, SignalWith, create_rw_signal};
 use floem::views::{Decorators, button, h_stack, label, text, text_input};
 use lucide_floem::Icon;
+use tokio::sync::mpsc;
 
+use crate::exec::UiEvent;
 use crate::panel::PanelVisible;
 use crate::theme::*;
 
@@ -28,6 +30,7 @@ pub fn view(
     selected: RwSignal<usize>,
     search: RwSignal<String>,
     visible: RwSignal<PanelVisible>,
+    events: mpsc::Sender<UiEvent>,
 ) -> impl IntoView {
     let paused = create_rw_signal(false);
 
@@ -48,9 +51,10 @@ pub fn view(
         }),
     )))
     .action(move || {
-        let next = (active_cue.get() + 1).min(cues_len.saturating_sub(1));
-        active_cue.set(next);
-        selected.set(next);
+        // Push the Go intent onto the Execution Thread event bus. The Exec
+        // Thread advances the playhead and broadcasts the new state back; the
+        // UI mirrors it into its active/selected cues via ingestion.
+        let _ = events.try_send(UiEvent::Go);
     })
     .style(|s| {
         s.background(theme().color.accent)

@@ -131,3 +131,54 @@ pub fn sample_cues() -> Vec<Cue> {
 pub fn sample_active_media() -> Vec<Arc<str>> {
     vec!["CUE 1.0 (Wind_Loop)".into(), "CUE 1.0 (Rain)".into()]
 }
+
+/// A named cue-context placeholder.
+///
+/// This is intentionally unimplemented for now (the async actor / cue-context
+/// machinery arrives in a later phase) — it only carries a `name` so the
+/// `WorkspaceState` has a stable slot to grow into.
+#[derive(Clone, Debug, Default)]
+#[allow(dead_code)]
+pub struct CueContext {
+    pub name: String,
+}
+
+/// The shared, read-only workspace snapshot the Execution Thread queries.
+///
+/// Held behind an `Arc` so the UI can cheaply clone the handle into the
+/// Execution Thread, which reads it lock-free on every event (e.g. GO) without
+/// ever taking a lock or copying the cue list.
+#[derive(Clone, Debug, Default)]
+pub struct WorkspaceState {
+    /// The flat cue chain. For now a simple `Vec`; the execution thread reads
+    /// `cues` directly to resolve the current playhead target.
+    pub cues: Vec<Cue>,
+    /// Show-level cue context (unimplemented beyond its name for now).
+    #[allow(dead_code)]
+    pub context: CueContext,
+}
+
+impl WorkspaceState {
+    pub fn new(cues: Vec<Cue>) -> Self {
+        Self {
+            cues,
+            context: CueContext {
+                name: "default".to_string(),
+            },
+        }
+    }
+}
+
+/// State the Execution Thread publishes back to the UI for ingestion.
+///
+/// Broadcast to the UI through a `tokio::sync::watch` channel; the UI mirrors
+/// it into a Floem `RwSignal` so the rest of the reactive UI can react to it.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct ExecutionState {
+    /// Linear playhead: the index of the cue the next GO will fire (and that
+    /// the most recent GO fired). Advanced by the Execution Thread.
+    pub playhead: usize,
+    /// Whether a cue sequence is currently running.
+    pub running: bool,
+}
+

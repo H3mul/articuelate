@@ -8,27 +8,41 @@
 
 mod cuelist;
 mod detail;
+mod exec;
 mod media;
 mod model;
 mod panel;
 mod theme;
 mod toolbar;
 
+use std::sync::Arc;
+use std::time::Duration;
+
+use floem::action::exec_after;
 use floem::keyboard::Key;
-use floem::reactive::{RwSignal, SignalUpdate, create_rw_signal};
+use floem::prelude::SignalTrack;
+use floem::reactive::{RwSignal, SignalGet, SignalUpdate, create_effect, create_rw_signal};
 use floem::views::{Decorators, h_stack, text, v_stack};
 use floem::window::WindowConfig;
 use floem::{Application, IntoView};
 
-use crate::model::{Cue, sample_cues};
+use crate::exec::ExecutorHandle;
+use crate::model::{Cue, ExecutionState, WorkspaceState, sample_cues};
 use crate::panel::PanelSystem;
 use crate::theme::*;
 
 fn main() {
-    let cues_len = sample_cues().len();
+    // The UI-owned, read-only show snapshot. Shared (Arc) with the Execution
+    // Thread so it can query cue data lock-free on every event.
+    let workspace = Arc::new(WorkspaceState::new(sample_cues()));
+
+    // Boot the Execution Thread; keep the UI-side handles.
+    let executor = exec::spawn(workspace.clone());
+    let cues_len = workspace.cues.len();
+
     Application::new()
         .window(
-            move |_| app_view(cues_len),
+            move |_| app_view(workspace, executor, cues_len),
             Some(
                 WindowConfig::default()
                     .size((1280.0, 800.0))
@@ -40,17 +54,55 @@ fn main() {
         .run();
 }
 
-fn app_view(cues_len: usize) -> impl IntoView {
-    let cues: RwSignal<im::Vector<Cue>> = create_rw_signal(sample_cues().into_iter().collect());
+fn app_view(workspace: Arc<WorkspaceState>, executor: ExecutorHandle, cues_len: usize) -> impl IntoView {
+    // Mirror the workspace cues into the UI's reactive list (kept as im::Vector
+    // to preserve the existing cuelist/detail bindings).
+    let cues: RwSignal<im::Vector<Cue>> =
+        create_rw_signal(workspace.cues.iter().cloned().collect());
+
     let selected = create_rw_signal(0usize);
     let active_cue = create_rw_signal(0usize);
     let search = create_rw_signal(String::new());
+
+    // --- Execution state ingestion -------------------------------------
+    // The Exec Thread publishes via a `watch` channel (it must not touch Floem
+    // signals directly, since those live in the UI thread). We mirror the
+    // latest value into a Floem `RwSignal` on a light UI-thread poll, which the
+    // rest of the reactive UI then subscribes to.
+    let exec_state = create_rw_signal(ExecutionState::default());
+    let ingest_tick = create_rw_signal(());
+    {
+        let rx = executor.state.clone();
+        let set = exec_state;
+        let tick = ingest_tick;
+        create_effect(move |_| {
+            tick.track();
+            let rx = rx.clone();
+            exec_after(Duration::from_millis(50), move |_| {
+                set.set((*rx.borrow()).clone());
+                tick.set(());
+            });
+        });
+    }
+
+    // Mirror the Exec playhead into the UI's active/selected cues. This only
+    // re-runs when `exec_state` actually changes, so local cursor moves
+    // (back / panic) remain until the next Execution Thread update.
+    {
+        let act = active_cue;
+        let sel = selected;
+        create_effect(move |_| {
+            let p = exec_state.get().playhead;
+            act.set(p);
+            sel.set(p);
+        });
+    }
 
     // Panel system owns layout + resize; we just hand it windows by location.
     let panels = PanelSystem::new();
     let visible = panels.visibility();
 
-    let toolbar = toolbar::view(cues_len, active_cue, selected, search, visible);
+    let toolbar = toolbar::view(cues_len, active_cue, selected, search, visible, executor.events);
     let cuelist = cuelist::view(cues, selected, active_cue, search);
     let media = media::view(visible);
     let detail = detail::view(selected, cues);
