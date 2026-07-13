@@ -142,15 +142,10 @@ impl PanelSystem {
             .main
             .expect("PanelSystem::build requires a Main window");
 
-        let main_view = container(
-            scroll(main.into_view())
-                .style(|s| s.size_full().min_size(0.0, 0.0))
-                .scroll_style(|s| s.handle_thickness(theme().panel.scroll_bar_width)),
-        )
-        .style(|s| {
+        let main_view = container(scroll(main.into_view())).style(|s| {
             s.flex_grow(1.0)
                 .flex_shrink(1.0)
-                .flex_basis(0.0) // Allows layout engine to shrink center view down below default content size
+                .flex_basis(0.0)
                 .min_size(0.0, 0.0)
                 .size_full()
         });
@@ -208,12 +203,7 @@ fn panel_container(
 ) -> impl View {
     let handle = resize_handle(location, sizes, available_size);
 
-    let content = container(
-        scroll(content.into_view())
-            .style(|s| s.size_full().min_size(0.0, 0.0))
-            .scroll_style(|s| s.handle_thickness(theme().panel.scroll_bar_width)),
-    )
-    .style(|s| {
+    let content = container(scroll(content.into_view())).style(|s| {
         s.flex_grow(1.0)
             .min_size(0.0, 0.0)
             .width_full()

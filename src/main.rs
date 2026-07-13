@@ -54,7 +54,11 @@ fn main() {
         .run();
 }
 
-fn app_view(workspace: Arc<WorkspaceState>, executor: ExecutorHandle, cues_len: usize) -> impl IntoView {
+fn app_view(
+    workspace: Arc<WorkspaceState>,
+    executor: ExecutorHandle,
+    cues_len: usize,
+) -> impl IntoView {
     // Mirror the workspace cues into the UI's reactive list (kept as im::Vector
     // to preserve the existing cuelist/detail bindings).
     let cues: RwSignal<im::Vector<Cue>> =
@@ -102,7 +106,14 @@ fn app_view(workspace: Arc<WorkspaceState>, executor: ExecutorHandle, cues_len: 
     let panels = PanelSystem::new();
     let visible = panels.visibility();
 
-    let toolbar = toolbar::view(cues_len, active_cue, selected, search, visible, executor.events);
+    let toolbar = toolbar::view(
+        cues_len,
+        active_cue,
+        selected,
+        search,
+        visible,
+        executor.events,
+    );
     let cuelist = cuelist::view(cues, selected, active_cue, search);
     let media = media::view(visible);
     let detail = detail::view(selected, cues);
@@ -112,6 +123,7 @@ fn app_view(workspace: Arc<WorkspaceState>, executor: ExecutorHandle, cues_len: 
         .with_bottom(detail)
         .with_right(media)
         .build(toolbar, status_bar())
+        .style(global_stylesheet)
         .into_view()
         .keyboard_navigable()
         .on_key_down(

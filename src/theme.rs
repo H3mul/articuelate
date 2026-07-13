@@ -20,7 +20,11 @@
 
 use std::sync::OnceLock;
 
-use floem::peniko::Color;
+use floem::{
+    peniko::Color,
+    style::Style,
+    views::scroll::{ScrollClass, ScrollCustomStyle},
+};
 use toml::Value;
 
 // --- toml value extraction ------------------------------------------------
@@ -215,6 +219,14 @@ fn load_theme() -> Theme {
         }
         None => parse_theme(include_str!("../themes/dark.toml")),
     }
+}
+
+pub fn global_stylesheet(s: Style) -> Style {
+    s.class(ScrollClass, |s| {
+        s.size_full()
+            .min_size(0.0, 0.0)
+            .apply_custom(ScrollCustomStyle::new().handle_thickness(theme().panel.scroll_bar_width))
+    })
 }
 
 #[cfg(test)]
