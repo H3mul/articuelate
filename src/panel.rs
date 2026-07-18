@@ -42,8 +42,8 @@ pub struct PanelSizes {
 }
 
 /// Visibility of the optional panels (Main is always shown).
-#[derive(Clone, Copy, Default)]
-pub struct PanelVisible {
+#[derive(Debug, Clone, Copy, Default)]
+pub struct PanelFlags {
     pub left: bool,
     pub right: bool,
     pub bottom: bool,
@@ -52,7 +52,8 @@ pub struct PanelVisible {
 /// Builder / owner of the panel layout.
 pub struct PanelSystem {
     sizes: RwSignal<PanelSizes>,
-    visible: RwSignal<PanelVisible>,
+    active: RwSignal<PanelFlags>,
+    visible: RwSignal<PanelFlags>,
     available_size: RwSignal<Size>,
     main: Option<AnyView>,
     left: Option<AnyView>,
@@ -69,11 +70,8 @@ impl PanelSystem {
                 right: panel.default_right_size,
                 bottom: panel.default_bottom_size,
             }),
-            visible: create_rw_signal(PanelVisible {
-                left: true,
-                right: true,
-                bottom: true,
-            }),
+            active: create_rw_signal(PanelFlags::default()),
+            visible: create_rw_signal(PanelFlags::default()),
             available_size: create_rw_signal(Size::ZERO),
             main: None,
             left: None,
@@ -105,8 +103,12 @@ impl PanelSystem {
     }
 
     /// Shared visibility signal so a toolbar can toggle panels.
-    pub fn visibility(&self) -> RwSignal<PanelVisible> {
+    pub fn visibility(&self) -> RwSignal<PanelFlags> {
         self.visible
+    }
+
+    pub fn active(&self) -> RwSignal<PanelFlags> {
+        self.active
     }
 
     /// Assemble the full workspace view: toolbar on top, panels in the middle,
@@ -120,12 +122,15 @@ impl PanelSystem {
         let visible = self.visible;
         let available_size = self.available_size;
 
-        // Derive visibility and size from which panels were actually registered.
-        visible.update(|v| {
-            v.left = self.left.is_some();
-            v.right = self.right.is_some();
-            v.bottom = self.bottom.is_some();
-        });
+        let start_flags = PanelFlags {
+            left: self.left.is_some(),
+            right: self.right.is_some(),
+            bottom: self.bottom.is_some(),
+        };
+
+        self.active.update(|a| *a = start_flags);
+        self.visible.update(|a| *a = start_flags);
+
         sizes.update(|s| {
             if self.left.is_none() {
                 s.left = 0.0;
@@ -198,7 +203,7 @@ fn panel_container(
     location: PanelLocation,
     content: impl IntoView + 'static,
     sizes: RwSignal<PanelSizes>,
-    visible: RwSignal<PanelVisible>,
+    visible: RwSignal<PanelFlags>,
     available_size: RwSignal<Size>,
 ) -> impl View {
     let handle = resize_handle(location, sizes, available_size);

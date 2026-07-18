@@ -12,10 +12,10 @@ use floem::views::{Decorators, button, h_stack, label, list, slider, text, v_sta
 use lucide_floem::Icon;
 
 use crate::model::sample_active_media;
-use crate::panel::PanelVisible;
+use crate::panel::PanelFlags;
 use crate::theme::*;
 
-pub fn view(visible: RwSignal<PanelVisible>) -> impl IntoView {
+pub fn view(visible: RwSignal<PanelFlags>) -> impl IntoView {
     let names = sample_active_media();
     let n = names.len();
 

@@ -7,12 +7,13 @@
 use floem::IntoView;
 use floem::peniko::Color;
 use floem::reactive::{RwSignal, SignalGet, SignalUpdate, SignalWith, create_rw_signal};
+use floem::taffy::Display;
 use floem::views::{Decorators, button, h_stack, label, text, text_input};
 use lucide_floem::Icon;
 use tokio::sync::mpsc;
 
 use crate::exec::UiEvent;
-use crate::panel::PanelVisible;
+use crate::panel::PanelFlags;
 use crate::theme::*;
 
 /// Which optional panel a toggle controls.
@@ -29,7 +30,8 @@ pub fn view(
     active_cue: RwSignal<usize>,
     selected: RwSignal<usize>,
     search: RwSignal<String>,
-    visible: RwSignal<PanelVisible>,
+    active: RwSignal<PanelFlags>,
+    visible: RwSignal<PanelFlags>,
     events: mpsc::Sender<UiEvent>,
 ) -> impl IntoView {
     let paused = create_rw_signal(false);
@@ -91,9 +93,9 @@ pub fn view(
         .keyboard_navigable();
     let search_wrap = h_stack((search_icon, search_box)).style(|s| s.items_center().gap(6.0));
 
-    let bottom_toggle = panel_toggle(Icon::PanelBottom, PanelWhich::Bottom, visible);
-    let left_toggle = panel_toggle(Icon::PanelLeft, PanelWhich::Left, visible);
-    let right_toggle = panel_toggle(Icon::PanelRight, PanelWhich::Right, visible);
+    let bottom_toggle = panel_toggle(Icon::PanelBottom, PanelWhich::Bottom, active, visible);
+    let left_toggle = panel_toggle(Icon::PanelLeft, PanelWhich::Left, active, visible);
+    let right_toggle = panel_toggle(Icon::PanelRight, PanelWhich::Right, active, visible);
 
     let cue_readout = label(move || {
         format!(
@@ -170,12 +172,24 @@ fn toggle_color(paused: RwSignal<bool>, on: Color) -> Color {
 }
 
 /// A small chevron/panel icon that toggles an optional panel.
-fn panel_toggle(icon: Icon, which: PanelWhich, visible: RwSignal<PanelVisible>) -> impl IntoView {
+fn panel_toggle(
+    icon: Icon,
+    which: PanelWhich,
+    active: RwSignal<PanelFlags>,
+    visible: RwSignal<PanelFlags>,
+) -> impl IntoView {
     let shown = move || {
         visible.with(|v| match which {
             PanelWhich::Left => v.left,
             PanelWhich::Right => v.right,
             PanelWhich::Bottom => v.bottom,
+        })
+    };
+    let hide = move || {
+        active.with(|v| match which {
+            PanelWhich::Left => !v.left,
+            PanelWhich::Right => !v.right,
+            PanelWhich::Bottom => !v.bottom,
         })
     };
     let child = icon.into_view().style(move |s| {
@@ -193,7 +207,7 @@ fn panel_toggle(icon: Icon, which: PanelWhich, visible: RwSignal<PanelVisible>) 
                 PanelWhich::Bottom => v.bottom = !v.bottom,
             })
         })
-        .style(|s| {
+        .style(move |s| {
             s.background(theme().color.panel_alt)
                 .color(theme().color.fg)
                 .border_radius(4.0)
@@ -201,6 +215,7 @@ fn panel_toggle(icon: Icon, which: PanelWhich, visible: RwSignal<PanelVisible>) 
                 .padding_vert(6.0)
                 .font_size(12.0)
                 .hover(|s| s.background(theme().color.border))
+                .apply_if(hide(), |s| s.display(Display::None))
         })
 }
 

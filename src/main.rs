@@ -104,6 +104,7 @@ fn app_view(
 
     // Panel system owns layout + resize; we just hand it windows by location.
     let panels = PanelSystem::new();
+    let active = panels.active();
     let visible = panels.visibility();
 
     let toolbar = toolbar::view(
@@ -111,6 +112,7 @@ fn app_view(
         active_cue,
         selected,
         search,
+        active,
         visible,
         executor.events,
     );
