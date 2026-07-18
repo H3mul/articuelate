@@ -12,6 +12,7 @@ mod exec;
 mod media;
 mod model;
 mod panel;
+mod tabbed;
 mod theme;
 mod toolbar;
 

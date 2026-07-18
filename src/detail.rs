@@ -1,28 +1,24 @@
 //! Bottom "Context-Dependent Detail Panel" (Lapce's collapsible bottom panel).
 //!
-//! Tabbed inspector driven by the currently selected cue. For the placeholder we
-//! render the three docs/ui.md tabs - General, Audio Routing, Fades - using
-//! flat Lapce-style sliders, number inputs, and a toggle-button routing matrix.
-//! Collapsing is handled by the panel system (toolbar toggle / Ctrl+J).
+//! Context-driven inspector for the currently selected cue. The placeholder
+//! renders three docs/ui.md tabs — General, Audio Routing, Fades — using flat
+//! Lapce-style sliders, number inputs, and a toggle-button routing matrix, all
+//! wrapped by the shared [`crate::tabbed`] tabbed window. Collapsing is handled
+//! by the panel system (toolbar toggle / Ctrl+J).
 
 use floem::IntoView;
 use floem::reactive::{
     RwSignal, SignalGet, SignalUpdate, SignalWith, create_get_update, create_rw_signal,
-    create_signal,
 };
 use floem::unit::Pct;
-use floem::views::{
-    Decorators, button, empty, h_stack, label, slider, tab, text, text_input, v_stack,
-};
+use floem::views::{Decorators, button, h_stack, label, slider, text, text_input, v_stack};
 
 use crate::model::Cue;
+use crate::tabbed;
 use crate::theme::*;
-
-const TABS: &[&str] = &["General", "Audio Routing", "Fades"];
 
 #[allow(clippy::too_many_arguments)]
 pub fn view(selected: RwSignal<usize>, cues: RwSignal<im::Vector<Cue>>) -> impl IntoView {
-    let (active_tab, set_active_tab) = create_signal(0usize);
     let routing: RwSignal<[[bool; 4]; 2]> = create_rw_signal([[false; 4]; 2]);
     let duration = create_rw_signal(3.0_f64);
     let volume = create_rw_signal(-24.0_f64);
@@ -38,70 +34,14 @@ pub fn view(selected: RwSignal<usize>, cues: RwSignal<im::Vector<Cue>>) -> impl 
         |p: &Pct| p.0 / 100.0 * 60.0 - 60.0,
     );
 
-    let b0 = tab_button(0, "General", active_tab, set_active_tab);
-    let b1 = tab_button(1, "Audio Routing", active_tab, set_active_tab);
-    let b2 = tab_button(2, "Fades", active_tab, set_active_tab);
-    let tab_buttons = h_stack((b0, b1, b2)).style(|s| {
-        s.items_center()
-            .gap(2.0)
-            .background(theme().color.panel)
-            .border_bottom(1.0)
-            .border_color(theme().color.border)
-    });
-
-    let content = tab(
-        move || active_tab.get(),
-        move || TABS.iter().copied(),
-        |t| *t,
-        move |t| match t {
-            "General" => general_tab(selected, cues).into_any(),
-            "Audio Routing" => routing_tab(routing).into_any(),
-            "Fades" => fades_tab(duration, volume, duration_pct, volume_pct).into_any(),
-            _ => empty().into_any(),
-        },
-    )
-    .style(|s| {
-        s.flex_col()
-            .flex_grow(1.0)
-            .min_height(0.0)
-            .padding(14.0)
-            .background(theme().color.bg)
-    });
-
-    v_stack((tab_buttons, content)).style(|s| {
-        s.flex_col()
-            .height(240.0)
-            .background(theme().color.bg)
-            .border_top(1.0)
-            .border_color(theme().color.border)
-    })
-}
-
-fn tab_button(
-    i: usize,
-    name: &'static str,
-    at: floem::reactive::ReadSignal<usize>,
-    st: floem::reactive::WriteSignal<usize>,
-) -> impl IntoView {
-    button(name).action(move || st.set(i)).style(move |s| {
-        s.padding_horiz(14.0)
-            .padding_vert(8.0)
-            .font_size(12.0)
-            .color(if at.get() == i {
-                theme().color.fg
-            } else {
-                theme().color.text_dim
-            })
-            .background(if at.get() == i {
-                theme().color.panel_alt
-            } else {
-                theme().color.panel
-            })
-            .apply_if(at.get() == i, |s| {
-                s.border_bottom(2.0).border_color(theme().color.accent)
-            })
-            .hover(|s| s.background(theme().color.border))
-    })
+    tabbed::TabbedWindow::new()
+        .with_position(tabbed::TabPosition::Top)
+        .with_tab("General", move || general_tab(selected, cues).into_any())
+        .with_tab("Audio Routing", move || routing_tab(routing).into_any())
+        .with_tab("Fades", move || {
+            fades_tab(duration, volume, duration_pct, volume_pct).into_any()
+        })
+        .build()
 }
 
 /// Reactive accessor for the selected cue's name.
