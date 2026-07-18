@@ -24,7 +24,7 @@ use std::thread;
 
 use tokio::sync::{mpsc, watch};
 
-use crate::model::{ExecutionState, WorkspaceState};
+use crate::model::{ExecutionState, PlayheadState, WorkspaceState};
 
 /// Discrete intents pushed from the UI onto the event bus.
 ///
@@ -84,8 +84,13 @@ async fn run(
                 // the next cue. (Strict playhead skipping of With/After cues
                 // and actor spawning arrive in a later phase.)
                 let last = workspace.cues.len().saturating_sub(1);
-                exec.playhead = (exec.playhead + 1).min(last);
-                exec.running = true;
+
+                exec.playhead = match exec.playhead {
+                    PlayheadState::Stopped => PlayheadState::Playing(0),
+                    PlayheadState::Playing(current) => {
+                        PlayheadState::Playing((current + 1).min(last))
+                    }
+                };
 
                 // Broadcast the new state to the UI. `send` only notifies when
                 // the value actually changes, so the UI is not woken spuriously.

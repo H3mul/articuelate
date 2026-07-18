@@ -28,7 +28,7 @@ use floem::window::WindowConfig;
 use floem::{Application, IntoView};
 
 use crate::exec::ExecutorHandle;
-use crate::model::{Cue, ExecutionState, WorkspaceState, sample_cues};
+use crate::model::{Cue, ExecutionState, PlayheadState, WorkspaceState, sample_cues};
 use crate::panel::PanelSystem;
 use crate::theme::*;
 
@@ -97,7 +97,11 @@ fn app_view(
         let act = active_cue;
         let sel = selected;
         create_effect(move |_| {
-            let p = exec_state.get().playhead;
+            let p = match exec_state.get().playhead {
+                PlayheadState::Stopped => 0,
+                PlayheadState::Playing(p) => p,
+            };
+
             act.set(p);
             sel.set(p);
         });
