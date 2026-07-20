@@ -13,7 +13,7 @@ use floem::views::{
     virtual_list,
 };
 
-use crate::model::{Cue, FollowMode};
+use crate::model::{Cue, Trigger, TriggerMode};
 use crate::theme::*;
 
 /// Fixed row height (px) for the virtualized list.
@@ -78,13 +78,16 @@ fn cue_row(
     selected: RwSignal<usize>,
     active_cue: RwSignal<usize>,
 ) -> impl IntoView {
-    let Cue { name, follow } = cue;
+    let Cue { name, trigger, .. } = cue;
 
     // Fresh copies for each closure site (RwSignal/usize are Copy).
     let (sel, act, idx) = (selected, active_cue, index);
 
-    let follow_badge = match follow {
-        FollowMode::Go => text(follow.badge()).style(|s| {
+    let trigger_badge = match trigger {
+        Trigger {
+            mode: TriggerMode::Playhead,
+            ..
+        } => text(trigger.badge()).style(|s| {
             s.color(theme().color.text_dim)
                 .font_family(theme().font.mono.to_string())
                 .font_size(9.0)
@@ -113,7 +116,7 @@ fn cue_row(
                 .font_weight(floem::text::Weight::BOLD)
         }),
         text("").style(|s| s.flex_grow(1.0)),
-        follow_badge,
+        trigger_badge,
     ))
     .style(|s| s.items_center().gap(8.0));
 
