@@ -12,7 +12,10 @@ use floem::views::{Decorators, button, h_stack, label, text, text_input};
 use lucide_floem::Icon;
 use tokio::sync::mpsc;
 
+use std::sync::Arc;
+
 use crate::exec::UiEvent;
+use crate::model::{CueId, Cuelist};
 use crate::panel::PanelFlags;
 use crate::theme::*;
 
@@ -24,11 +27,10 @@ enum PanelWhich {
     Bottom,
 }
 
-#[allow(clippy::too_many_arguments)]
 pub fn view(
-    cues_len: usize,
-    active_cue: RwSignal<usize>,
-    selected: RwSignal<usize>,
+    cuelist: impl SignalGet<Arc<Cuelist>> + SignalWith<Arc<Cuelist>> + Copy + 'static,
+    active_cue: RwSignal<Option<CueId>>,
+    selected: RwSignal<Option<CueId>>,
     search: RwSignal<String>,
     active: RwSignal<PanelFlags>,
     visible: RwSignal<PanelFlags>,
@@ -70,9 +72,18 @@ pub fn view(
 
     let back_btn = button(icon(Icon::SkipBack, theme().color.fg, 16.0))
         .action(move || {
-            let prev = active_cue.get().saturating_sub(1);
-            active_cue.set(prev);
-            selected.set(prev);
+            let cl = cuelist.get();
+            if let Some(id) = active_cue.get() {
+                if let Some(pos) = cl.iter().position(|c| c.id == id) {
+                    if pos > 0 {
+                        if let Some(prev) = cl.iter().nth(pos - 1) {
+                            let prev_id = prev.id;
+                            active_cue.set(Some(prev_id));
+                            selected.set(Some(prev_id));
+                        }
+                    }
+                }
+            }
         })
         .style(button_style());
 
@@ -98,11 +109,14 @@ pub fn view(
     let right_toggle = panel_toggle(Icon::PanelRight, PanelWhich::Right, active, visible);
 
     let cue_readout = label(move || {
-        format!(
-            "CUE {}/{}",
-            active_cue.get().saturating_add(1).min(cues_len),
-            cues_len
-        )
+        let cl = cuelist.get();
+        let len = cl.len();
+        let idx = active_cue.with(|a| {
+            a.and_then(|id| cl.iter().position(|c| c.id == id))
+                .map(|i| i + 1)
+                .unwrap_or(0)
+        });
+        format!("CUE {}/{}", idx, len)
     })
     .style(|s| {
         s.font_family(theme().font.mono.to_string())
@@ -118,7 +132,7 @@ pub fn view(
                 .font_size(12.0)
         }),
     )))
-    .action(move || active_cue.set(0))
+    .action(move || active_cue.set(None))
     .style(|s| {
         s.background(theme().color.panel_alt)
             .border(1.0)

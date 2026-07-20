@@ -13,12 +13,16 @@ use floem::reactive::{
 use floem::unit::Pct;
 use floem::views::{Decorators, button, h_stack, label, slider, text, text_input, v_stack};
 
-use crate::model::Cue;
+use std::sync::Arc;
+
+use crate::model::{CueId, Cuelist};
 use crate::tabbed;
 use crate::theme::*;
 
-#[allow(clippy::too_many_arguments)]
-pub fn view(selected: RwSignal<usize>, cues: RwSignal<im::Vector<Cue>>) -> impl IntoView {
+pub fn view(
+    selected: RwSignal<Option<CueId>>,
+    cuelist: impl SignalGet<Arc<Cuelist>> + SignalWith<Arc<Cuelist>> + Copy + 'static,
+) -> impl IntoView {
     let routing: RwSignal<[[bool; 4]; 2]> = create_rw_signal([[false; 4]; 2]);
     let duration = create_rw_signal(3.0_f64);
     let volume = create_rw_signal(-24.0_f64);
@@ -36,7 +40,7 @@ pub fn view(selected: RwSignal<usize>, cues: RwSignal<im::Vector<Cue>>) -> impl 
 
     tabbed::TabbedWindow::new()
         .with_position(tabbed::TabPosition::Top)
-        .with_tab("General", move || general_tab(selected, cues).into_any())
+        .with_tab("General", move || general_tab(selected, cuelist).into_any())
         .with_tab("Audio Routing", move || routing_tab(routing).into_any())
         .with_tab("Fades", move || {
             fades_tab(duration, volume, duration_pct, volume_pct).into_any()
@@ -46,23 +50,34 @@ pub fn view(selected: RwSignal<usize>, cues: RwSignal<im::Vector<Cue>>) -> impl 
 
 /// Reactive accessor for the selected cue's name.
 fn cue_name(
-    selected: RwSignal<usize>,
-    cues: RwSignal<im::Vector<Cue>>,
+    selected: RwSignal<Option<CueId>>,
+    cuelist: impl SignalGet<Arc<Cuelist>> + SignalWith<Arc<Cuelist>> + Copy + 'static,
 ) -> impl Fn() -> String + 'static {
     move || {
-        cues.with(|c| {
-            c.get(selected.get())
-                .map(|cue| cue.name.clone())
+        let cl = cuelist.get();
+        selected.with(|s| {
+            s.and_then(|id| cl.get_cue(id).map(|c| c.name.clone()))
                 .unwrap_or_else(|| "—".to_string())
         })
     }
 }
 
-fn general_tab(selected: RwSignal<usize>, cues: RwSignal<im::Vector<Cue>>) -> impl IntoView {
-    let (s1, s2) = (selected, selected);
-    let name_fn = cue_name(s1, cues);
+fn general_tab(
+    selected: RwSignal<Option<CueId>>,
+    cuelist: impl SignalGet<Arc<Cuelist>> + SignalWith<Arc<Cuelist>> + Copy + 'static,
+) -> impl IntoView {
+    let name_fn = cue_name(selected, cuelist);
 
-    let ctx = label(move || format!("Task {} — {}", s2.get() + 1, name_fn())).style(|s| {
+    let ctx = label(move || {
+        let cl = cuelist.get();
+        let pos = selected.with(|s| {
+            s.and_then(|id| cl.iter().position(|c| c.id == id))
+                .map(|i| i + 1)
+                .unwrap_or(0)
+        });
+        format!("Cue {} — {}", pos, name_fn())
+    })
+    .style(|s| {
         s.color(theme().color.fg)
             .font_size(13.0)
             .font_weight(floem::text::Weight::BOLD)

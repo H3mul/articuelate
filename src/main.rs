@@ -22,28 +22,29 @@ use std::time::Duration;
 use floem::action::exec_after;
 use floem::keyboard::Key;
 use floem::prelude::SignalTrack;
-use floem::reactive::{RwSignal, SignalGet, SignalUpdate, create_effect, create_rw_signal};
+use floem::reactive::{
+    RwSignal, SignalGet, SignalUpdate, SignalWith, create_effect, create_memo, create_rw_signal,
+};
 use floem::views::{Decorators, h_stack, text, v_stack};
 use floem::window::WindowConfig;
 use floem::{Application, IntoView};
 
 use crate::exec::ExecutorHandle;
-use crate::model::{Cue, ExecutionState, PlayheadState, WorkspaceState, sample_cues};
+use crate::model::{ExecutionState, Playhead, WorkspaceState};
 use crate::panel::PanelSystem;
 use crate::theme::*;
 
 fn main() {
-    // The UI-owned, read-only show snapshot. Shared (Arc) with the Execution
-    // Thread so it can query cue data lock-free on every event.
-    let workspace = Arc::new(WorkspaceState::new(sample_cues()));
+    // Temporarily use programmatic samples
+    // TODO: remove after save state is implemented
+    let workspace = Arc::new(WorkspaceState::sample());
 
     // Boot the Execution Thread; keep the UI-side handles.
     let executor = exec::spawn(workspace.clone());
-    let cues_len = workspace.cues.len();
 
     Application::new()
         .window(
-            move |_| app_view(workspace, executor, cues_len),
+            move |_| app_view(workspace, executor),
             Some(
                 WindowConfig::default()
                     .size((1280.0, 800.0))
@@ -55,18 +56,20 @@ fn main() {
         .run();
 }
 
-fn app_view(
-    workspace: Arc<WorkspaceState>,
-    executor: ExecutorHandle,
-    cues_len: usize,
-) -> impl IntoView {
-    // Mirror the workspace cues into the UI's reactive list (kept as im::Vector
-    // to preserve the existing cuelist/detail bindings).
-    let cues: RwSignal<im::Vector<Cue>> =
-        create_rw_signal(workspace.cues.iter().cloned().collect());
+fn app_view(workspace: Arc<WorkspaceState>, executor: ExecutorHandle) -> impl IntoView {
+    // Root signal owned by the UI thread: the single source of truth for all
+    // workspace state. The cuelist is held behind an `Arc`, so the Execution
+    // Thread and the UI share it lock-free.
+    let workspace_signal: RwSignal<Arc<WorkspaceState>> = create_rw_signal(workspace);
 
-    let selected = create_rw_signal(0usize);
-    let active_cue = create_rw_signal(0usize);
+    // Derived memo for the cuelist view. Re-evaluates only when `ws.cuelist`
+    // changes, so the rest of the workspace can evolve without signature churn.
+    let cuelist_memo = create_memo(move |_| workspace_signal.with(|ws| ws.cuelist.clone()));
+
+    // Selection / active cue are keyed by `CueId` (not an index), because the
+    // cue list can reorder at runtime.
+    let selected = create_rw_signal(None);
+    let active_cue = create_rw_signal(None);
     let search = create_rw_signal(String::new());
 
     // --- Execution state ingestion -------------------------------------
@@ -98,8 +101,8 @@ fn app_view(
         let sel = selected;
         create_effect(move |_| {
             let p = match exec_state.get().playhead {
-                PlayheadState::Stopped => 0,
-                PlayheadState::Playing(p) => p,
+                Playhead::Stopped => None,
+                Playhead::Playing(id) => Some(id),
             };
 
             act.set(p);
@@ -113,7 +116,7 @@ fn app_view(
     let visible = panels.visibility();
 
     let toolbar = toolbar::view(
-        cues_len,
+        cuelist_memo,
         active_cue,
         selected,
         search,
@@ -121,12 +124,12 @@ fn app_view(
         visible,
         executor.events,
     );
-    let cuelist = cuelist::view(cues, selected, active_cue, search);
+    let cuelist_view = cuelist::view(cuelist_memo, selected, active_cue, search);
     let media = media::view(visible);
-    let detail = detail::view(selected, cues);
+    let detail = detail::view(selected, cuelist_memo);
 
     let root = panels
-        .with_main(cuelist)
+        .with_main(cuelist_view)
         .with_bottom(detail)
         .with_right(media)
         .build(toolbar, status_bar())

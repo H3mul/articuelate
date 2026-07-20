@@ -13,26 +13,28 @@ use floem::views::{
     virtual_list,
 };
 
-use crate::model::{Cue, Trigger, TriggerMode};
+use std::sync::Arc;
+
+use crate::model::{Cue, CueId, Cuelist, Trigger, TriggerMode};
 use crate::theme::*;
 
 /// Fixed row height (px) for the virtualized list.
 const ROW_H: f64 = 82.0;
 
 pub fn view(
-    cues: RwSignal<im::Vector<Cue>>,
-    selected: RwSignal<usize>,
-    active_cue: RwSignal<usize>,
+    cuelist: impl SignalGet<Arc<Cuelist>> + SignalWith<Arc<Cuelist>> + Copy + 'static,
+    selected: RwSignal<Option<CueId>>,
+    active_cue: RwSignal<Option<CueId>>,
     search: RwSignal<String>,
 ) -> impl IntoView {
-    // Filtered + re-indexed copy of the flat chain.
-    let filtered: Memo<im::Vector<(usize, Cue)>> = create_memo(move |_| {
+    // Filtered copy of the flat chain, keyed by CueId (not an index), so the
+    // list stays correct even when cues reorder at runtime.
+    let filtered: Memo<im::Vector<(CueId, Arc<Cue>)>> = create_memo(move |_| {
         let q = search.with(|s| s.to_lowercase());
-        cues.with(|cs| {
-            cs.iter()
-                .enumerate()
-                .filter(|(_, c)| q.is_empty() || c.name.to_lowercase().contains(&q))
-                .map(|(i, c)| (i, c.clone()))
+        cuelist.with(|cl| {
+            cl.iter()
+                .filter(|c| q.is_empty() || c.name.to_lowercase().contains(&q))
+                .map(|c| (c.id, c.clone()))
                 .collect::<im::Vector<_>>()
         })
     });
@@ -41,8 +43,8 @@ pub fn view(
         VirtualDirection::Vertical,
         VirtualItemSize::Fixed(Box::new(|| ROW_H)),
         move || filtered.get(),
-        move |(i, _)| *i,
-        move |(i, cue)| cue_row(i, cue, selected, active_cue),
+        move |(id, _)| *id,
+        move |(id, cue)| cue_row(id, cue, selected, active_cue),
     )
     .style(|s| s.flex_col().width_full());
 
@@ -73,15 +75,16 @@ pub fn view(
 }
 
 fn cue_row(
-    index: usize,
-    cue: Cue,
-    selected: RwSignal<usize>,
-    active_cue: RwSignal<usize>,
+    id: CueId,
+    cue: Arc<Cue>,
+    selected: RwSignal<Option<CueId>>,
+    active_cue: RwSignal<Option<CueId>>,
 ) -> impl IntoView {
-    let Cue { name, trigger, .. } = cue;
+    let name = cue.name.clone();
+    let trigger = cue.trigger;
 
-    // Fresh copies for each closure site (RwSignal/usize are Copy).
-    let (sel, act, idx) = (selected, active_cue, index);
+    // Fresh copies for each closure site (RwSignal/CueId are Copy).
+    let (sel, act, cid) = (selected, active_cue, id);
 
     let trigger_badge = match trigger {
         Trigger {
@@ -120,10 +123,9 @@ fn cue_row(
     ))
     .style(|s| s.items_center().gap(8.0));
 
-    let (sel_s, sel_i) = (sel, idx);
-    let is_selected = move || sel_s.get() == sel_i;
+    let is_selected = move || sel.get() == Some(cid);
 
-    let (act_c, idx_c) = (act, idx);
+    let (act_c, cid_c) = (act, cid);
     container(header_line.style(|s| s.flex_col().gap(4.0)))
         .style(move |s| {
             s.width_full()
@@ -137,13 +139,12 @@ fn cue_row(
                 })
                 .border_bottom(1.0)
                 .border_color(theme().color.border)
-                .apply_if(act_c.get() == idx_c, |s| {
+                .apply_if(act_c.get() == Some(cid_c), |s| {
                     s.border_left(3.0).border_color(theme().color.accent)
                 })
         })
         .on_click(move |_| {
-            let (s, i) = (sel, idx);
-            s.set(i);
+            sel.set(Some(cid));
             EventPropagation::Stop
         })
 }

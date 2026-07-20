@@ -24,7 +24,7 @@ use std::thread;
 
 use tokio::sync::{mpsc, watch};
 
-use crate::model::{ExecutionState, PlayheadState, WorkspaceState};
+use crate::model::{ExecutionState, Playhead, WorkspaceState};
 
 /// Discrete intents pushed from the UI onto the event bus.
 ///
@@ -80,21 +80,29 @@ async fn run(
     while let Some(event) = events.recv().await {
         match event {
             UiEvent::Go => {
-                // Dynamic read of the workspace: advance the linear playhead to
-                // the next cue. (Strict playhead skipping of With/After cues
-                // and actor spawning arrive in a later phase.)
-                let last = workspace.cues.len().saturating_sub(1);
+                // Dynamic read of the workspace: advance the playhead to the
+                // next cue *in the current ordering*. Because cues can reorder
+                // at runtime, we always resolve the successor through
+                // `iter_after` rather than caching an index.
+                let cuelist = &workspace.cuelist;
 
                 exec.playhead = match exec.playhead {
-                    PlayheadState::Stopped => PlayheadState::Playing(0),
-                    PlayheadState::Playing(current) => {
-                        PlayheadState::Playing((current + 1).min(last))
-                    }
+                    Playhead::Stopped => cuelist
+                        .iter()
+                        .next()
+                        .map(|cue| Playhead::Playing(cue.id))
+                        .unwrap_or(Playhead::Stopped),
+                    Playhead::Playing(current) => cuelist
+                        .iter_after(current)
+                        .and_then(|mut it| it.next())
+                        .map(|cue| Playhead::Playing(cue.id))
+                        .unwrap_or(Playhead::Playing(current)),
                 };
 
                 // Broadcast the new state to the UI. `send` only notifies when
                 // the value actually changes, so the UI is not woken spuriously.
-                let _ = state.send(exec);
+                // Send a clone so `exec` survives for the next loop iteration.
+                let _ = state.send(exec.clone());
             }
         }
     }

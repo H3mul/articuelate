@@ -6,8 +6,7 @@
 //! change the displayed follow badge.
 
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
-use std::fmt;
+use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use uuid::Uuid;
 
@@ -107,28 +106,73 @@ pub fn sample_active_media() -> Vec<Arc<str>> {
 /// Held behind an `Arc` so the UI can cheaply clone the handle into the
 /// Execution Thread, which reads it lock-free on every event (e.g. GO) without
 /// ever taking a lock or copying the cue list.
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
-pub struct WorkspaceState {
+#[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
+pub struct Cuelist {
     /// The flat cue chain. For now a simple `Vec`; the execution thread reads
     /// `cues` directly to resolve the current playhead target.
-    pub cuelist: Vec<CueId>,
+    order: Vec<CueId>,
     /// The mapping of cue IDs to cue data.
-    pub cues: HashMap<CueId, Arc<Cue>>,
+    cues: HashMap<CueId, Arc<Cue>>,
 }
 
-impl WorkspaceState {
+impl Cuelist {
+    pub fn new(cues: Vec<Cue>) -> Self {
+        let mut list = Self::default();
+        list.add_cues(cues.into_iter());
+        list
+    }
+
+    pub fn len(&self) -> usize {
+        self.order.len()
+    }
+
     pub fn add_cue(&mut self, cue: Cue) {
         let id = cue.id;
         self.cues.insert(id, Arc::new(cue));
-        self.cuelist.push(id);
+        self.order.push(id);
     }
 
-    pub fn cuelist(&self) -> impl Iterator<Item = &Arc<Cue>> {
-        self.cuelist.iter().filter_map(|id| self.cues.get(id))
+    pub fn add_cues(&mut self, cues: impl Iterator<Item = Cue>) {
+        for cue in cues {
+            self.add_cue(cue);
+        }
+    }
+
+    pub fn get_cue(&self, id: CueId) -> Option<&Arc<Cue>> {
+        self.cues.get(&id)
+    }
+
+    /// Returns an iterator over all cues in the cue list.
+    pub fn iter(&self) -> impl Iterator<Item = &Arc<Cue>> {
+        self.order.iter().filter_map(|id| self.cues.get(id))
+    }
+
+    /// Returns an iterator over the cues after the given cue ID, if it exists.
+    pub fn iter_after(&self, id: CueId) -> Option<impl Iterator<Item = &Arc<Cue>>> {
+        self.order.iter().position(|&x| x == id).map(|index| {
+            let start_index = index + 1; // Return next element
+
+            self.order[start_index..]
+                .iter()
+                .filter_map(|id| self.cues.get(id))
+        })
     }
 }
 
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
+pub struct WorkspaceState {
+    pub cuelist: Arc<Cuelist>,
+}
+
+impl WorkspaceState {
+    pub fn sample() -> Self {
+        Self {
+            cuelist: Arc::new(Cuelist::new(sample_cues())),
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub enum Playhead {
     #[default]
     Stopped,
@@ -139,9 +183,10 @@ pub enum Playhead {
 ///
 /// Broadcast to the UI through a `tokio::sync::watch` channel; the UI mirrors
 /// it into a Floem `RwSignal` so the rest of the reactive UI can react to it.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct ExecutionState {
     /// Linear playhead: the index of the cue the next GO will fire (and that
     /// the most recent GO fired). Advanced by the Execution Thread.
     pub playhead: Playhead,
+    pub active_cues: HashSet<CueId>,
 }
