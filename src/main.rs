@@ -17,19 +17,22 @@ mod theme;
 mod toolbar;
 
 use std::sync::Arc;
-use std::time::Duration;
 
-use floem::action::exec_after;
+use crossbeam_channel;
+
+use arc_swap::ArcSwap;
+use floem::ext_event::create_signal_from_channel;
 use floem::keyboard::Key;
-use floem::prelude::SignalTrack;
 use floem::reactive::{
-    RwSignal, SignalGet, SignalUpdate, SignalWith, create_effect, create_memo, create_rw_signal,
+    ReadSignal, RwSignal, SignalGet, SignalUpdate, SignalWith, create_effect, create_memo,
+    create_rw_signal,
 };
 use floem::views::{Decorators, h_stack, text, v_stack};
 use floem::window::WindowConfig;
 use floem::{Application, IntoView};
+use tokio::sync::mpsc::Sender;
 
-use crate::exec::ExecutorHandle;
+use crate::exec::{ExecutionEngine, UiEvent};
 use crate::model::{ExecutionState, Playhead, WorkspaceState};
 use crate::panel::PanelSystem;
 use crate::theme::*;
@@ -37,14 +40,51 @@ use crate::theme::*;
 fn main() {
     // Temporarily use programmatic samples
     // TODO: remove after save state is implemented
-    let workspace = Arc::new(WorkspaceState::sample());
+    let workspace = Arc::new(ArcSwap::from_pointee(WorkspaceState::sample()));
 
-    // Boot the Execution Thread; keep the UI-side handles.
-    let executor = exec::spawn(workspace.clone());
+    let (exec_engine, exec_state_rx, events_tx) = ExecutionEngine::init(workspace.clone());
+    let (tokio_tx, tokio_rx) = std::sync::mpsc::channel();
+
+    std::thread::spawn(move || {
+        let rt = tokio::runtime::Builder::new_multi_thread()
+            .enable_all()
+            .build()
+            .expect("failed to build shared tokio runtime");
+
+        rt.block_on(async move {
+            let handle = tokio::runtime::Handle::current();
+            let _ = tokio_tx.send(handle);
+
+            exec_engine.run().await;
+        });
+    });
+
+    let tokio_handle = tokio_rx.recv().expect("Tokio runtime failed to start");
+
+    let (ui_exec_state_tx, ui_exec_state_rx) =
+        crossbeam_channel::unbounded::<Arc<ExecutionState>>();
+
+    let mut exec_state_r = exec_state_rx.clone();
+    let initial_val = exec_state_r.borrow().clone();
+    let _ = ui_exec_state_tx.send(initial_val);
+
+    tokio_handle.spawn(async move {
+        while exec_state_r.changed().await.is_ok() {
+            let next = exec_state_r.borrow_and_update().clone();
+            if ui_exec_state_tx.send(next).is_err() {
+                break;
+            }
+        }
+    });
 
     Application::new()
         .window(
-            move |_| app_view(workspace, executor),
+            move |_| {
+                let exec_state_signal_r =
+                    create_signal_from_channel::<Arc<ExecutionState>>(ui_exec_state_rx);
+
+                app_view(workspace, exec_state_signal_r, events_tx)
+            },
             Some(
                 WindowConfig::default()
                     .size((1280.0, 800.0))
@@ -56,57 +96,59 @@ fn main() {
         .run();
 }
 
-fn app_view(workspace: Arc<WorkspaceState>, executor: ExecutorHandle) -> impl IntoView {
-    // Root signal owned by the UI thread: the single source of truth for all
-    // workspace state. The cuelist is held behind an `Arc`, so the Execution
-    // Thread and the UI share it lock-free.
-    let workspace_signal: RwSignal<Arc<WorkspaceState>> = create_rw_signal(workspace);
+/// Apply a mutation to the workspace on the UI thread.
+///
+/// The `RwSignal` is the single source of truth for the UI: writing it notifies
+/// every subscriber (cuelist, detail, toolbar). The `ArcSwap` is the engine's
+/// read path: `store` publishes the new `Arc<WorkspaceState>` so the next time
+/// the Execution Engine reads it (e.g. on `Go`), it sees the latest edits —
+/// without locking or copying the cue list.
+///
+/// This is the single entry point for any UI edit to the workspace. It is
+/// currently unused because no view mutates the workspace yet; wire it into
+/// editors (e.g. the detail inspector) as they gain write access.
+#[allow(dead_code)]
+fn update_workspace(
+    signal: RwSignal<Arc<WorkspaceState>>,
+    shared: &Arc<ArcSwap<WorkspaceState>>,
+    f: impl FnOnce(&mut WorkspaceState),
+) {
+    // `WorkspaceState` is immutable behind `Arc`, so clone -> modify -> rewrap.
+    let mut next = signal.get().as_ref().clone();
+    f(&mut next);
+    let next = Arc::new(next);
+    signal.set(next.clone()); // (a) notify UI subscribers
+    shared.store(next); // (b) arcswap for the exec engine
+}
 
-    // Derived memo for the cuelist view. Re-evaluates only when `ws.cuelist`
-    // changes, so the rest of the workspace can evolve without signature churn.
+fn app_view(
+    workspace: Arc<ArcSwap<WorkspaceState>>,
+    exec_state: ReadSignal<Option<Arc<ExecutionState>>>,
+    events_tx: Sender<UiEvent>,
+) -> impl IntoView {
+    // UI-side source of truth for the workspace. Seeded from the current
+    // `ArcSwap` snapshot; kept in sync with edits via `update_workspace`.
+    let workspace_signal: RwSignal<Arc<WorkspaceState>> = create_rw_signal(workspace.load_full());
+
     let cuelist_memo = create_memo(move |_| workspace_signal.with(|ws| ws.cuelist.clone()));
 
-    // Selection / active cue are keyed by `CueId` (not an index), because the
-    // cue list can reorder at runtime.
     let selected = create_rw_signal(None);
     let active_cue = create_rw_signal(None);
     let search = create_rw_signal(String::new());
 
-    // --- Execution state ingestion -------------------------------------
-    // The Exec Thread publishes via a `watch` channel (it must not touch Floem
-    // signals directly, since those live in the UI thread). We mirror the
-    // latest value into a Floem `RwSignal` on a light UI-thread poll, which the
-    // rest of the reactive UI then subscribes to.
-    let exec_state = create_rw_signal(ExecutionState::default());
-    let ingest_tick = create_rw_signal(());
-    {
-        let rx = executor.state.clone();
-        let set = exec_state;
-        let tick = ingest_tick;
-        create_effect(move |_| {
-            tick.track();
-            let rx = rx.clone();
-            exec_after(Duration::from_millis(50), move |_| {
-                set.set((*rx.borrow()).clone());
-                tick.set(());
-            });
-        });
-    }
-
-    // Mirror the Exec playhead into the UI's active/selected cues. This only
-    // re-runs when `exec_state` actually changes, so local cursor moves
-    // (back / panic) remain until the next Execution Thread update.
     {
         let act = active_cue;
         let sel = selected;
         create_effect(move |_| {
-            let p = match exec_state.get().playhead {
-                Playhead::Stopped => None,
-                Playhead::Playing(id) => Some(id),
-            };
+            if let Some(state) = exec_state.get() {
+                let p = match state.playhead {
+                    Playhead::Stopped => None,
+                    Playhead::Playing(id) => Some(id),
+                };
 
-            act.set(p);
-            sel.set(p);
+                act.set(p);
+                sel.set(p);
+            }
         });
     }
 
@@ -122,7 +164,7 @@ fn app_view(workspace: Arc<WorkspaceState>, executor: ExecutorHandle) -> impl In
         search,
         active,
         visible,
-        executor.events,
+        events_tx,
     );
     let cuelist_view = cuelist::view(cuelist_memo, selected, active_cue, search);
     let media = media::view(visible);

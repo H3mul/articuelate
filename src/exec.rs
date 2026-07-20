@@ -1,15 +1,16 @@
-//! The Execution Thread: a Tokio event loop (event bus) that receives UI
+//! The Execution Engine: a Tokio event loop (event bus) that receives UI
 //! intents and publishes execution state back to the UI.
 //!
 //! Threading model (mirrors `docs/pdd.md` §3.2): the Execution Engine runs
-//! entirely off the Floem UI thread on its own Tokio runtime, so async work
-//! never blocks window interaction.
+//! entirely off the Floem UI thread, on a *shared* Tokio runtime owned by
+//! `main`. It knows nothing about the UI thread — it only communicates through
+//! the `mpsc` intent bus and the `watch` state channel.
 //!
 //! Communication pipelines:
 //!
 //! ```text
-//!   UI Thread                Execution Thread (Tokio)
-//!   ─────────                ───────────────────────
+//!   UI Thread                Execution Engine (Tokio, shared domain)
+//!   ─────────                ───────────────────────────────────────
 //!   UiEvent  ──mpsc──▶       event loop  (wakes on recv)
 //!   (Go, ...)                │
 //!            ◀─watch──       ExecutionState (pub/sub broadcast)
@@ -19,8 +20,8 @@
 //! Tokio and is dispatched. State changes are published back through the
 //! `watch` channel, which the UI ingests into a Floem `RwSignal`.
 
+use arc_swap::ArcSwap;
 use std::sync::Arc;
-use std::thread;
 
 use tokio::sync::{mpsc, watch};
 
@@ -36,73 +37,77 @@ pub enum UiEvent {
     Go,
 }
 
-/// UI-side handles used to wire the Execution Thread.
-pub struct ExecutorHandle {
-    /// Send UI intents to the Execution Thread. Cheaply cloneable; use
-    /// `try_send` from synchronous UI callbacks.
-    pub events: mpsc::Sender<UiEvent>,
-    /// Subscribe to Execution Thread state for UI ingestion.
-    pub state: watch::Receiver<ExecutionState>,
+pub struct ExecutionEngine {
+    rx_events: mpsc::Receiver<UiEvent>,
+    tx_state: watch::Sender<Arc<ExecutionState>>,
+    workspace_state: Arc<ArcSwap<WorkspaceState>>,
+    state: Arc<ExecutionState>,
 }
 
-/// Boot the Execution Thread, returning the UI-side handles.
-///
-/// Spawns a dedicated OS thread running its own single-threaded Tokio runtime,
-/// so the async orchestrator is fully decoupled from the Floem UI thread.
-pub fn spawn(workspace: Arc<WorkspaceState>) -> ExecutorHandle {
-    let (events_tx, events_rx) = mpsc::channel::<UiEvent>(64);
-    let (state_tx, state_rx) = watch::channel(ExecutionState::default());
-
-    thread::spawn(move || {
-        let rt = tokio::runtime::Builder::new_current_thread()
-            .enable_time()
-            .build()
-            .expect("failed to build execution runtime");
-        rt.block_on(run(workspace, events_rx, state_tx));
-    });
-
-    ExecutorHandle {
-        events: events_tx,
-        state: state_rx,
+impl ExecutionEngine {
+    pub fn init(
+        workspace_state: Arc<ArcSwap<WorkspaceState>>,
+    ) -> (
+        Self,
+        watch::Receiver<Arc<ExecutionState>>,
+        mpsc::Sender<UiEvent>,
+    ) {
+        let state = Arc::new(ExecutionState::default());
+        let (events_tx, events_rx) = mpsc::channel::<UiEvent>(64);
+        let (state_tx, state_rx) = watch::channel(state.clone());
+        (
+            Self {
+                rx_events: events_rx,
+                tx_state: state_tx,
+                workspace_state,
+                state,
+            },
+            state_rx,
+            events_tx,
+        )
     }
-}
 
-/// The Tokio event loop. Awaits UI events; each one wakes the runtime and is
-/// dispatched to its handler. State changes are published to the UI via the
-/// `watch` channel.
-async fn run(
-    workspace: Arc<WorkspaceState>,
-    mut events: mpsc::Receiver<UiEvent>,
-    state: watch::Sender<ExecutionState>,
-) {
-    let mut exec = ExecutionState::default();
+    /// Helper: Publish the engine-owned execution state through the `watch`
+    /// channel.
+    ///
+    /// Hands the current `Arc` to subscribers via a cheap refcount bump — the
+    /// owned `Arc` stays put (ground truth). `send` only notifies when the
+    /// value changed, so the UI is not woken spuriously.
+    pub fn commit_exec_state(&self) {
+        let _ = self.tx_state.send(self.state.clone());
+    }
 
-    while let Some(event) = events.recv().await {
-        match event {
-            UiEvent::Go => {
-                // Dynamic read of the workspace: advance the playhead to the
-                // next cue *in the current ordering*. Because cues can reorder
-                // at runtime, we always resolve the successor through
-                // `iter_after` rather than caching an index.
-                let cuelist = &workspace.cuelist;
+    /// Lock-free read of the workspace: `load_full` returns an
+    /// `Arc<WorkspaceState>` (O(1) clone of the shared pointer), and we only
+    /// borrow through it — the workspace value is never copied. The engine
+    /// always resolves the successor against the latest cue ordering the UI
+    /// published via the `ArcSwap`.
+    fn workspace_state(&self) -> Arc<WorkspaceState> {
+        self.workspace_state.load_full()
+    }
 
-                exec.playhead = match exec.playhead {
-                    Playhead::Stopped => cuelist
-                        .iter()
-                        .next()
-                        .map(|cue| Playhead::Playing(cue.id))
-                        .unwrap_or(Playhead::Stopped),
-                    Playhead::Playing(current) => cuelist
-                        .iter_after(current)
-                        .and_then(|mut it| it.next())
-                        .map(|cue| Playhead::Playing(cue.id))
-                        .unwrap_or(Playhead::Playing(current)),
-                };
+    pub async fn run(mut self) {
+        while let Some(event) = self.rx_events.recv().await {
+            match event {
+                UiEvent::Go => {
+                    let cuelist = &self.workspace_state().cuelist;
 
-                // Broadcast the new state to the UI. `send` only notifies when
-                // the value actually changes, so the UI is not woken spuriously.
-                // Send a clone so `exec` survives for the next loop iteration.
-                let _ = state.send(exec.clone());
+                    Arc::make_mut(&mut self.state).playhead = match self.state.playhead {
+                        Playhead::Stopped => cuelist
+                            .iter()
+                            .next()
+                            .map(|cue| Playhead::Playing(cue.id))
+                            .unwrap_or(Playhead::Stopped),
+                        Playhead::Playing(active) => cuelist
+                            .iter_after(active)
+                            .and_then(|mut it| it.next())
+                            .map(|cue| Playhead::Playing(cue.id))
+                            .unwrap_or(Playhead::Stopped),
+                    };
+
+                    // Commit the new state as soon as we're done processing.
+                    self.commit_exec_state();
+                }
             }
         }
     }

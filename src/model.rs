@@ -188,5 +188,5 @@ pub struct ExecutionState {
     /// Linear playhead: the index of the cue the next GO will fire (and that
     /// the most recent GO fired). Advanced by the Execution Thread.
     pub playhead: Playhead,
-    pub active_cues: HashSet<CueId>,
+    pub active_cues: Arc<HashSet<CueId>>,
 }
