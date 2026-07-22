@@ -1,55 +1,75 @@
-# Articuelate colour theme (Lapce-style).
-#
-# Styling attributes are isolated here instead of being hard-coded in Rust.
-# This file is a *layer on top of* the strong defaults baked into the `Theme`
-# struct (see src/theme.rs): any attribute you omit falls back to its default,
-# and any value that fails to parse is silently ignored in favour of that
-# default. So the app always boots.
-#
-# Top-level tables are sections; keys inside are the exact field names used in
-# the `Theme` struct and the generated accessor functions:
-#   [color] -> colour attributes   (e.g. `bg`, `accent`, `fg`)
-#   [font]  -> typography          (e.g. `mono`, `font_size`)
+# Articuelate colour theme
 
-[font]
-mono = "monospace"
+[font.mono_sm]
+font_family = "JetBrains Mono"
+font_weight = "regular"
+font_size = 11
+line_height = 14
+
+[font.mono_xl]
+font_family = "JetBrains Mono"
+font_weight = "bold"
+font_size = 24
+line_height = 30
+
+[font.heading]
+font_family = "Segoe UI"
+font_weight = "semibold"
+font_size = 15 
+line_height = 20 
+
+[font.body_bold]
+font_family = "Segoe UI"
+font_weight = "medium"
 font_size = 13
+line_height = 18 
+
+[font.body]
+font_family = "Segoe UI"
+font_weight = "regular"
+font_size = 13
+line_height = 18 
 
 [color]
-bg = "#1a1b26"
-panel = "#1f2130"
-panel-alt = "#24283b"
-border = "#3b4261"
 
-fg = "#c0caf5"
-text-dim = "#565f89"
-text-faint = "#3b4261"
+# Deepest base canvas background (window background).
+bg_app = "#181926"
+# Primary pane panels (Cuelist background, Inspector background).
+bg_surface = "#1e2030"
+# Primary pane panel alternation (Cuelist background rows)
+bg_surface_odd = "#24273a"
+# Hover states, active tab backgrounds, secondary buttons.
+bg_hover = "#363a4f"
+# Input controls, table headers, inactive rows, cards.
+bg_overlay = "#494d64"
 
-accent = "#7aa2f7"
-accent-dim = "#5d7de0"
-lapce-blue = "#2ac3de"
+# Standard divider for table rows and pane borders.
+border_subtle = "#6e738d"
+# Focused input borders, active tab indicators.
+border_focus = "#8087a2"
 
-panic = "#f7768e"
-panic-dim = "#c75b6e"
+# High-contrast body, cue titles, times. Primary legibility.
+text_primary = "#cad3f5"
+# Column headers, cue numbers, inactive tabs, unit labels (sec, dB).
+text_secondary = "#b8c0e0"
+# Disabled cues, muted parameters.
+text_disabled = "#a5adcb"
 
-meter = "#9ece6a"
+# Active Playhead / Selected Target (Cyan Blue).
+status_active = "#8aadf4"
+# Active Playing Cue (Green glow/bar).
+status_status_running = "#a6da95"
+# Pre-Wait / Post-Wait Active (Amber).
+status_wait = "#eed49f"
+# Broken Cue / Panic Trigger (Red).
+status_error = "#ee99a0"
+# Armed / Standby State (Purple).
+status_standby = "#c6a0f6"
 
-[panel]
-# Default panel sizes (pixels).
-default_left_size = 220
-default_right_size = 260
-default_bottom_size = 240
-
-# Minimum panel width/height when resizing (pixels).
-min_left_size = 220
-min_right_size = 250
-min_bottom_size = 220
-
-# Drag handle thickness (pixels).
-handle_width = 6
-
-# Border width between panels (pixels).
-border_width = 2
-
-# Scroll bar width (pixels).
-scroll_bar_width = 6
+[dim]
+space_xs = 4.0
+space_sm = 8.0
+space_md = 12.0
+space_lg = 16.0
+space_xl = 24.0
+height_cue_row = 24.0

@@ -18,11 +18,11 @@
 //! file and the declaration dict, e.g. `theme().color.bg` or
 //! `theme().font.font_size`.
 
-use std::sync::OnceLock;
-
 use floem::{
     peniko::Color,
+    reactive::{ReadSignal, SignalGet, WriteSignal, use_context},
     style::Style,
+    text::Weight,
     views::scroll::{ScrollClass, ScrollCustomStyle},
 };
 use toml::Value;
@@ -54,6 +54,36 @@ impl FromTomlValue for String {
     }
 }
 
+impl FromTomlValue for Weight {
+    fn from_value(v: &Value) -> Option<Weight> {
+        let s = v.as_str()?;
+        let weight = match s.to_lowercase().as_str() {
+            "thin" => Weight::THIN,
+            "extralight" | "extra light" => Weight::EXTRA_LIGHT,
+            "light" => Weight::LIGHT,
+            "normal" | "regular" => Weight::NORMAL,
+            "medium" => Weight::MEDIUM,
+            "semibold" | "semi bold" => Weight::SEMIBOLD,
+            "bold" => Weight::BOLD,
+            "extrabold" | "extra bold" => Weight::EXTRA_BOLD,
+            "black" => Weight::BLACK,
+            _ => {
+                let n: u16 = s.parse().ok()?;
+                Weight(n)
+            }
+        };
+        Some(weight)
+    }
+}
+
+impl FromTomlValue for f32 {
+    fn from_value(v: &Value) -> Option<f32> {
+        v.as_float()
+            .or_else(|| v.as_integer().map(|i| i as f64))
+            .map(|f| f as f32)
+    }
+}
+
 fn hex_to_color(s: &str) -> Result<Color, String> {
     let s = s.trim().trim_start_matches('#');
     if s.len() != 6 {
@@ -63,6 +93,50 @@ fn hex_to_color(s: &str) -> Result<Color, String> {
     let g = u8::from_str_radix(&s[2..4], 16).map_err(|_| format!("invalid hex colour `{s}`"))?;
     let b = u8::from_str_radix(&s[4..6], 16).map_err(|_| format!("invalid hex colour `{s}`"))?;
     Ok(Color::rgb8(r, g, b))
+}
+
+// --- font style helper type -----------------------------------------------
+
+/// A bundle of typography attributes for a single text role. Each entry in the
+/// `[font]` section of the toml file (e.g. `font.mono_xl`) maps to one of
+/// these, making it easy to apply in Floem:
+///
+/// ```ignore
+/// label(|| "Hello")
+///     .style(|s| {
+///         s.font_family(theme().font.mono_xl.family.clone())
+///          .font_size(theme().font.mono_xl.size)
+///          .line_height(theme().font.mono_xl.line_height)
+///          .font_weight(theme().font.mono_xl.weight)
+///     });
+/// ```
+#[derive(Debug, Clone)]
+pub struct FontStyle {
+    pub family: String,
+    pub size: f32,
+    pub line_height: f32,
+    pub weight: Weight,
+}
+
+impl FromTomlValue for FontStyle {
+    fn from_value(v: &Value) -> Option<FontStyle> {
+        let t = v.as_table()?;
+        Some(FontStyle {
+            family: t.get("font_family").and_then(FromTomlValue::from_value)?,
+            size: t
+                .get("font_size")
+                .and_then(FromTomlValue::from_value)
+                .unwrap_or(14.0),
+            line_height: t
+                .get("line_height")
+                .and_then(FromTomlValue::from_value)
+                .unwrap_or(20.0),
+            weight: t
+                .get("font_weight")
+                .and_then(FromTomlValue::from_value)
+                .unwrap_or(Weight::NORMAL),
+        })
+    }
 }
 
 // --- theme definition macro ----------------------------------------------
@@ -158,52 +232,103 @@ macro_rules! define_theme {
 
 define_theme! {
     color: {
-        bg: (Color, Color::rgb8(0x1e, 0x1e, 0x1e)),
-        panel: (Color, Color::rgb8(0x25, 0x25, 0x28)),
-        panel_alt: (Color, Color::rgb8(0x2d, 0x2d, 0x31)),
-        border: (Color, Color::rgb8(0x3a, 0x3a, 0x3f)),
-        fg: (Color, Color::rgb8(0xd4, 0xd4, 0xd4)),
-        text_dim: (Color, Color::rgb8(0x8a, 0x8a, 0x8a)),
-        text_faint: (Color, Color::rgb8(0x5a, 0x5a, 0x60)),
-        accent: (Color, Color::rgb8(0x3f, 0xb9, 0x50)),
-        accent_dim: (Color, Color::rgb8(0x2f, 0x8a, 0x3b)),
-        lapce_blue: (Color, Color::rgb8(0x18, 0x90, 0xff)),
-        panic: (Color, Color::rgb8(0xf1, 0x4c, 0x4c)),
-        panic_dim: (Color, Color::rgb8(0xb8, 0x30, 0x30)),
-        meter: (Color, Color::rgb8(0x4e, 0xc9, 0x5a)),
+        // Deepest base canvas background (window background).
+        bg_app: (Color, Color::rgb8(0x18, 0x19, 0x26)),
+        // Primary pane panels (Cuelist background, Inspector background).
+        bg_surface: (Color, Color::rgb8(0x1e, 0x20, 0x30)),
+        // Primary pane panel alternation (Cuelist background rows)
+        bg_surface_odd: (Color, Color::rgb8(0x24, 0x27, 0x3a)),
+        // Hover states, active tab backgrounds, secondary buttons.
+        bg_hover: (Color, Color::rgb8(0x36, 0x3a, 0x4f)),
+        // Input controls, table headers, inactive rows, cards.
+        bg_overlay: (Color, Color::rgb8(0x49, 0x4d, 0x64)),
+
+        // Standard divider for table rows and pane borders.
+        border_subtle: (Color, Color::rgb8(0x6e, 0x73, 0x8d)),
+        // Focused input borders, active tab indicators.
+        border_focus: (Color, Color::rgb8(0x80, 0x87, 0xa2)),
+
+        // High-contrast body, cue titles, times. Primary legibility.
+        text_primary: (Color, Color::rgb8(0xca, 0xd3, 0xf5)),
+        // Column headers, cue numbers, inactive tabs, unit labels (sec, dB).
+        text_secondary: (Color, Color::rgb8(0xb8, 0xc0, 0xe0)),
+        // Disabled cues, muted parameters.
+        text_disabled: (Color, Color::rgb8(0xa5, 0xad, 0xcb)),
+
+        // Active Playhead / Selected Target (Cyan Blue).
+        status_active: (Color, Color::rgb8(0x8a, 0xad, 0xf4)),
+        // Active Playing Cue (Green glow/bar).
+        status_status_running: (Color, Color::rgb8(0xa6, 0xda, 0x95)),
+        // Pre-Wait / Post-Wait Active (Amber).
+        status_wait: (Color, Color::rgb8(0xee, 0xd4, 0x9f)),
+        // Broken Cue / Panic Trigger (Red).
+        status_error: (Color, Color::rgb8(0xee, 0x99, 0xa0)),
+        // Armed / Standby State (Purple).
+        status_standby: (Color, Color::rgb8(0xc6, 0xa0, 0xf6)),
     },
     font: {
         mono: (String, "monospace".to_string()),
-        // font_size: (f64, 13.0),
+        font_size: (f32, 13.0),
+        mono_sm: (FontStyle, FontStyle {
+            family: "JetBrains Mono".to_string(),
+            size: 11.0,
+            line_height: 14.0,
+            weight: Weight::NORMAL,
+        }),
+        mono_xl: (FontStyle, FontStyle {
+            family: "JetBrains Mono".to_string(),
+            size: 24.0,
+            line_height: 30.0,
+            weight: Weight::BOLD,
+        }),
+        heading: (FontStyle, FontStyle {
+            family: "Segoe UI".to_string(),
+            size: 15.0,
+            line_height: 20.0,
+            weight: Weight::SEMIBOLD,
+        }),
+        body_bold: (FontStyle, FontStyle {
+            family: "Segoe UI".to_string(),
+            size: 13.0,
+            line_height: 18.0,
+            weight: Weight::MEDIUM,
+        }),
+        body: (FontStyle, FontStyle {
+            family: "Segoe UI".to_string(),
+            size: 13.0,
+            line_height: 18.0,
+            weight: Weight::NORMAL,
+        }),
     },
-    panel: {
-        default_left_size: (f64, 220.0),
-        default_right_size: (f64, 260.0),
-        default_bottom_size: (f64, 240.0),
-        handle_width: (f64, 4.0),
-        min_left_size: (f64, 140.0),
-        min_right_size: (f64, 180.0),
-        min_bottom_size: (f64, 120.0),
-        border_width: (f64, 1.0),
-        scroll_bar_width: (f64, 4.0),
+    dim: {
+        space_xs: (f32, 4.0),
+        space_sm: (f32, 8.0),
+        space_md: (f32, 12.0),
+        space_lg: (f32, 16.0),
+        space_xl: (f32, 24.0),
+        height_cue_row: (f32, 24.0),
     },
 }
 
 // --- resolution -----------------------------------------------------------
 
-static THEME: OnceLock<Theme> = OnceLock::new();
+/// Type alias for the theme signal tuple passed through Floem context.
+pub type ThemeSignal = (ReadSignal<Theme>, WriteSignal<Theme>);
 
-/// The resolved, immutable theme. Bootstrapped on first use from the first
-/// `.toml` file found in `themes/` (theme switching arrives later). Sections
-/// mirror the toml file and the declaration dict, e.g. `theme().color.bg`.
-pub fn theme() -> &'static Theme {
-    THEME.get_or_init(load_theme)
+/// Fetch the current theme from Floem context.
+///
+/// Uses `get_untracked()` so call sites don't create individual reactive
+/// dependencies — the top-level `move ||` in [`app_view`] is the single
+/// dependency that triggers a full rebuild on theme change.
+pub fn theme() -> Theme {
+    let (rx, _) = use_context::<ThemeSignal>().expect("theme signal not provided");
+    rx.get_untracked()
 }
 
 /// Grab the first `.toml` file in `themes/` and parse it as an override layer
 /// on top of the baked-in defaults. Falls back to the compiled-in default so
 /// the app always boots even if the directory is missing or empty.
-fn load_theme() -> Theme {
+pub fn load_theme() -> Theme {
     let first = std::fs::read_dir("themes").ok().and_then(|entries| {
         entries
             .filter_map(Result::ok)
@@ -225,7 +350,7 @@ pub fn global_stylesheet(s: Style) -> Style {
     s.class(ScrollClass, |s| {
         s.size_full()
             .min_size(0.0, 0.0)
-            .apply_custom(ScrollCustomStyle::new().handle_thickness(theme().panel.scroll_bar_width))
+            .apply_custom(ScrollCustomStyle::new().handle_thickness(theme().dim.space_xs))
     })
 }
 
@@ -237,46 +362,67 @@ mod tests {
     fn parses_dark_toml_with_defaults() {
         let t = parse_theme(include_str!("../themes/dark.toml"));
         assert_eq!(t.font.mono, "monospace");
-        assert_eq!(t.color.bg, Color::rgb8(0x1e, 0x1e, 0x1e));
-        assert_eq!(t.color.accent, Color::rgb8(0x3f, 0xb9, 0x50));
-        assert_eq!(t.panel.default_left_size, 220.0);
-        assert_eq!(t.panel.default_right_size, 260.0);
-        assert_eq!(t.panel.default_bottom_size, 240.0);
-        assert_eq!(t.panel.handle_width, 4.0);
-        assert_eq!(t.panel.min_left_size, 140.0);
-        assert_eq!(t.panel.min_right_size, 180.0);
-        assert_eq!(t.panel.min_bottom_size, 120.0);
-        assert_eq!(t.panel.border_width, 1.0);
+        assert_eq!(t.color.bg_app, Color::rgb8(0x18, 0x19, 0x26));
+        assert_eq!(t.color.text_primary, Color::rgb8(0xca, 0xd3, 0xf5));
+        assert_eq!(t.dim.space_xs, 4.0);
+        assert_eq!(t.dim.space_md, 12.0);
+    }
+
+    #[test]
+    fn parses_font_style_from_toml() {
+        let t = parse_theme(include_str!("../themes/dark.toml"));
+        assert_eq!(t.font.mono_xl.family, "JetBrains Mono");
+        assert_eq!(t.font.mono_xl.size, 24.0);
+        assert_eq!(t.font.mono_xl.line_height, 30.0);
+        assert_eq!(t.font.mono_xl.weight, Weight::BOLD);
+        assert_eq!(t.font.mono_sm.family, "JetBrains Mono");
+        assert_eq!(t.font.mono_sm.size, 11.0);
+        assert_eq!(t.font.mono_sm.weight, Weight::NORMAL);
+        assert_eq!(t.font.heading.family, "Segoe UI");
+        assert_eq!(t.font.heading.weight, Weight::SEMIBOLD);
+        assert_eq!(t.font.body_bold.weight, Weight::MEDIUM);
+        assert_eq!(t.font.body.weight, Weight::NORMAL);
+        assert_eq!(t.font.font_size, 13.0);
     }
 
     #[test]
     fn missing_values_fall_back_to_defaults() {
         let t = parse_theme("[color]\n# empty\n");
-        assert_eq!(t.color.bg, Theme::default().color.bg);
-        assert_eq!(t.color.accent, Theme::default().color.accent);
+        assert_eq!(t.color.bg_app, Theme::default().color.bg_app);
+        assert_eq!(t.color.text_primary, Theme::default().color.text_primary);
         assert_eq!(t.font.mono, Theme::default().font.mono);
+    }
+
+    #[test]
+    fn font_style_falls_back_to_defaults() {
+        let t = parse_theme("[font]\n# empty\n");
+        assert_eq!(t.font.mono_xl.family, Theme::default().font.mono_xl.family);
+        assert_eq!(t.font.mono_xl.size, Theme::default().font.mono_xl.size);
         assert_eq!(
-            t.panel.default_left_size,
-            Theme::default().panel.default_left_size
+            t.font.mono_xl.line_height,
+            Theme::default().font.mono_xl.line_height
         );
+        assert_eq!(t.font.mono_xl.weight, Theme::default().font.mono_xl.weight);
     }
 
     #[test]
     fn unparseable_color_falls_back_to_default() {
-        let t = parse_theme("[color]\nbg = \"not-a-colour\"\n");
-        assert_eq!(t.color.bg, Theme::default().color.bg);
+        let t = parse_theme("[color]\nbg_app = \"not-a-colour\"\n");
+        assert_eq!(t.color.bg_app, Theme::default().color.bg_app);
     }
 
     #[test]
-    fn panel_values_parsed_from_toml() {
-        let t = parse_theme("[panel]\nhandle_width = 8\nmin_left_size = 200\nborder_width = 2\n");
-        assert_eq!(t.panel.handle_width, 8.0);
-        assert_eq!(t.panel.min_left_size, 200.0);
-        assert_eq!(t.panel.border_width, 2.0);
-        // defaults kept for unset fields
-        assert_eq!(
-            t.panel.default_left_size,
-            Theme::default().panel.default_left_size
-        );
+    fn unparseable_font_style_falls_back_to_default() {
+        let t = parse_theme("[font.mono_xl]\nfont_family = 42\n");
+        assert_eq!(t.font.mono_xl.family, Theme::default().font.mono_xl.family);
+        assert_eq!(t.font.mono_xl.size, Theme::default().font.mono_xl.size);
+    }
+
+    #[test]
+    fn font_style_defaults_from_missing_toml_table() {
+        // When the [font.mono_xl] table is entirely absent, the default is
+        // used because none of the table-access path produces a Value.
+        let t = parse_theme("[font]\nmono = \"foo\"\n");
+        assert_eq!(t.font.mono_xl.family, Theme::default().font.mono_xl.family);
     }
 }

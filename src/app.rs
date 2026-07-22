@@ -9,9 +9,9 @@ use floem::ext_event::create_signal_from_channel;
 use floem::keyboard::Key;
 use floem::reactive::{
     ReadSignal, RwSignal, SignalGet, SignalUpdate, SignalWith, create_effect, create_memo,
-    create_rw_signal,
+    create_rw_signal, create_signal, provide_context,
 };
-use floem::views::{Decorators, h_stack, text, v_stack};
+use floem::views::{Decorators, dyn_container, h_stack, text, v_stack};
 use floem::window::WindowConfig;
 use floem::{Application, IntoView};
 use tokio::sync::{mpsc::Sender, watch};
@@ -23,7 +23,7 @@ use crate::media;
 use crate::model::{ExecutionState, Playhead, WorkspaceState};
 use crate::panel::PanelSystem;
 
-use crate::theme::*;
+use crate::theme::{ThemeSignal, global_stylesheet, load_theme, theme};
 use crate::toolbar;
 
 /// The Floem application and its UI-side execution-state channel.
@@ -80,7 +80,28 @@ impl App {
                     let exec_state_signal_r =
                         create_signal_from_channel::<Arc<ExecutionState>>(exec_state_rx);
 
-                    app_view(workspace, exec_state_signal_r, events_tx)
+                    // Create the theme signal and provide it as context so
+                    // `theme()` works anywhere in the view tree.
+                    let theme_signal: ThemeSignal = create_signal(load_theme());
+                    provide_context(theme_signal);
+
+                    // A counter that bumps on theme change, driving a full
+                    // rebuild via dyn_container.
+                    let theme_gen = create_rw_signal(0usize);
+                    {
+                        let (rx, _) = theme_signal;
+                        create_effect(move |_| {
+                            rx.get();
+                            theme_gen.update(|n| *n = n.wrapping_add(1));
+                        });
+                    }
+
+                    let ws = workspace.clone();
+                    let tx = events_tx.clone();
+                    dyn_container(
+                        move || theme_gen.get(),
+                        move |_| app_view(ws.clone(), exec_state_signal_r, tx.clone()),
+                    )
                 },
                 Some(
                     WindowConfig::default()
@@ -176,12 +197,12 @@ fn app_view(
 
 fn status_bar() -> impl IntoView {
     let left = text("STATUS: Connected (ASIO: Focusrite USB)").style(|s| {
-        s.color(theme().color.accent)
+        s.color(theme().color.status_active)
             .font_size(11.0)
             .font_family(theme().font.mono.to_string())
     });
     let right = text("CPU: 4%   DSP: 12%").style(|s| {
-        s.color(theme().color.text_dim)
+        s.color(theme().color.text_secondary)
             .font_size(11.0)
             .font_family(theme().font.mono.to_string())
     });
@@ -192,9 +213,9 @@ fn status_bar() -> impl IntoView {
             .gap(10.0)
             .padding_horiz(12.0)
             .padding_vert(4.0)
-            .background(theme().color.panel)
+            .background(theme().color.bg_surface)
             .border_top(1.0)
-            .border_color(theme().color.border)
+            .border_color(theme().color.border_subtle)
             .height(24.0)
     }),))
     .style(|s| s.width_full())
