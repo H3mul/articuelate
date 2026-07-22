@@ -40,16 +40,16 @@ pub fn view(
 
     let pause_btn = button(icon(
         Icon::Pause,
-        toggle_color(paused, theme().color.fg),
+        toggle_color(paused, theme().color.text_primary),
         16.0,
     ))
     .action(move || paused.update(|p| *p = !*p))
     .style(button_style());
 
     let go_btn = button(h_stack((
-        icon(Icon::Play, theme().color.accent, 14.0),
+        icon(Icon::Play, theme().color.status_active, 14.0),
         text("GO").style(|s| {
-            s.color(theme().color.bg)
+            s.color(theme().color.bg_app)
                 .font_weight(floem::text::Weight::BOLD)
                 .font_size(13.0)
         }),
@@ -61,16 +61,16 @@ pub fn view(
         let _ = events.try_send(UiEvent::Go);
     })
     .style(|s| {
-        s.background(theme().color.accent)
-            .color(theme().color.bg)
+        s.background(theme().color.status_active)
+            .color(theme().color.bg_app)
             .padding_horiz(16.0)
             .padding_vert(6.0)
             .border_radius(4.0)
             .gap(6.0)
-            .hover(|s| s.background(theme().color.accent_dim))
+            .hover(|s| s.background(theme().color.status_active))
     });
 
-    let back_btn = button(icon(Icon::SkipBack, theme().color.fg, 16.0))
+    let back_btn = button(icon(Icon::SkipBack, theme().color.text_primary, 16.0))
         .action(move || {
             let cl = cuelist.get();
             if let Some(id) = active_cue.get() {
@@ -87,14 +87,14 @@ pub fn view(
         })
         .style(button_style());
 
-    let search_icon = icon(Icon::Search, theme().color.text_dim, 14.0);
+    let search_icon = icon(Icon::Search, theme().color.text_secondary, 14.0);
     let search_box = text_input(search)
         .placeholder("Search cues…")
         .style(|s| {
-            s.background(theme().color.panel_alt)
-                .color(theme().color.fg)
+            s.background(theme().color.bg_overlay)
+                .color(theme().color.text_primary)
                 .border(1.0)
-                .border_color(theme().color.border)
+                .border_color(theme().color.border_subtle)
                 .border_radius(4.0)
                 .padding_horiz(8.0)
                 .padding_vert(4.0)
@@ -119,29 +119,29 @@ pub fn view(
         format!("CUE {}/{}", idx, len)
     })
     .style(|s| {
-        s.font_family(theme().font.mono.to_string())
-            .color(theme().color.text_dim)
+        s.font_family(theme().font.mono_sm.family.clone())
+            .color(theme().color.text_secondary)
             .font_size(12.0)
     });
 
     let panic_btn = button(h_stack((
-        icon(Icon::Ban, theme().color.panic, 14.0),
+        icon(Icon::Ban, theme().color.status_error, 14.0),
         text("PANIC").style(|s| {
-            s.color(theme().color.panic)
+            s.color(theme().color.status_error)
                 .font_weight(floem::text::Weight::BOLD)
                 .font_size(12.0)
         }),
     )))
     .action(move || active_cue.set(None))
     .style(|s| {
-        s.background(theme().color.panel_alt)
+        s.background(theme().color.bg_overlay)
             .border(1.0)
-            .border_color(theme().color.panic_dim)
+            .border_color(theme().color.status_error)
             .border_radius(4.0)
             .padding_horiz(12.0)
             .padding_vert(6.0)
             .gap(6.0)
-            .hover(|s| s.background(theme().color.panic_dim.multiply_alpha(0.25)))
+            .hover(|s| s.background(theme().color.status_error.multiply_alpha(0.25)))
     });
 
     h_stack((
@@ -152,7 +152,7 @@ pub fn view(
         left_toggle,
         bottom_toggle,
         right_toggle,
-        text("|").style(|s| s.color(theme().color.text_faint)),
+        text("|").style(|s| s.color(theme().color.text_disabled)),
         cue_readout,
         // spacer pushes PANIC to the far right
         text("").style(|s| s.flex_grow(1.0)),
@@ -163,9 +163,9 @@ pub fn view(
             .gap(8.0)
             .padding_horiz(10.0)
             .padding_vert(6.0)
-            .background(theme().color.panel)
+            .background(theme().color.bg_surface)
             .border_bottom(1.0)
-            .border_color(theme().color.border)
+            .border_color(theme().color.border_subtle)
             .height(44.0)
     })
 }
@@ -179,7 +179,7 @@ fn icon(icon: Icon, color: Color, size: f32) -> impl IntoView {
 /// Colour for a toggle that reflects its paused/active state.
 fn toggle_color(paused: RwSignal<bool>, on: Color) -> Color {
     if paused.get() {
-        theme().color.accent_dim
+        theme().color.status_active
     } else {
         on
     }
@@ -208,9 +208,9 @@ fn panel_toggle(
     };
     let child = icon.into_view().style(move |s| {
         s.size(16.0, 16.0).color(if shown() {
-            theme().color.accent
+            theme().color.status_active
         } else {
-            theme().color.text_dim
+            theme().color.text_secondary
         })
     });
     button(child)
@@ -222,13 +222,13 @@ fn panel_toggle(
             })
         })
         .style(move |s| {
-            s.background(theme().color.panel_alt)
-                .color(theme().color.fg)
+            s.background(theme().color.bg_overlay)
+                .color(theme().color.text_primary)
                 .border_radius(4.0)
                 .padding_horiz(8.0)
                 .padding_vert(6.0)
                 .font_size(12.0)
-                .hover(|s| s.background(theme().color.border))
+                .hover(|s| s.background(theme().color.border_subtle))
                 .apply_if(hide(), |s| s.display(Display::None))
         })
 }
@@ -236,13 +236,13 @@ fn panel_toggle(
 /// Shared base styling for the plain icon buttons.
 fn button_style() -> impl Fn(floem::style::Style) -> floem::style::Style + 'static {
     move |s: floem::style::Style| {
-        s.background(theme().color.panel_alt)
-            .color(theme().color.fg)
+        s.background(theme().color.bg_overlay)
+            .color(theme().color.text_primary)
             .border_radius(4.0)
             .padding_horiz(10.0)
             .padding_vert(6.0)
             .font_size(14.0)
             .min_width(34.0)
-            .hover(|s| s.background(theme().color.border))
+            .hover(|s| s.background(theme().color.border_subtle))
     }
 }

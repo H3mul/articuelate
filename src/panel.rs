@@ -63,12 +63,11 @@ pub struct PanelSystem {
 
 impl PanelSystem {
     pub fn new() -> Self {
-        let panel = &theme().panel;
         PanelSystem {
             sizes: create_rw_signal(PanelSizes {
-                left: panel.default_left_size,
-                right: panel.default_right_size,
-                bottom: panel.default_bottom_size,
+                left: 220.0,
+                right: 260.0,
+                bottom: 240.0,
             }),
             active: create_rw_signal(PanelFlags::default()),
             visible: create_rw_signal(PanelFlags::default()),
@@ -193,7 +192,7 @@ impl PanelSystem {
             s.flex_col()
                 .width_full()
                 .height_full()
-                .background(theme().color.bg)
+                .background(theme().color.bg_app)
         })
     }
 }
@@ -239,7 +238,7 @@ fn panel_container(
     };
 
     container(inner).style(move |s| {
-        let bw = theme().panel.border_width as f32;
+        let bw: f32 = 1.0;
         let s = s.apply_if(!is_shown(), |s| s.display(floem::style::Display::None));
 
         match location {
@@ -250,8 +249,8 @@ fn panel_container(
                 .flex_shrink(1.0)
                 .flex_grow(0.0)
                 .border_right(bw)
-                .border_color(theme().color.border)
-                .background(theme().color.panel),
+                .border_color(theme().color.border_subtle)
+                .background(theme().color.bg_surface),
             PanelLocation::Right => s
                 .width(sizes.with(|x| x.right as f32))
                 .height_full()
@@ -259,8 +258,8 @@ fn panel_container(
                 .flex_shrink(1.0)
                 .flex_grow(0.0)
                 .border_left(bw)
-                .border_color(theme().color.border)
-                .background(theme().color.panel),
+                .border_color(theme().color.border_subtle)
+                .background(theme().color.bg_surface),
             PanelLocation::Bottom => s
                 .height(sizes.with(|x| x.bottom as f32))
                 .width_full()
@@ -269,8 +268,8 @@ fn panel_container(
                 .flex_grow(0.0)
                 .align_items(AlignItems::Stretch)
                 .border_top(bw)
-                .border_color(theme().color.border)
-                .background(theme().color.panel),
+                .border_color(theme().color.border_subtle)
+                .background(theme().color.bg_surface),
         }
     })
 }
@@ -297,30 +296,27 @@ fn resize_handle(
                 let available_size = available_size.get_untracked();
                 let current_sizes = sizes.get_untracked();
 
-                let panel_cfg = &theme().panel;
                 let new = match location {
                     PanelLocation::Left => {
                         let new_size =
                             current_sizes.left - pointer_event.pos.x + drag_start_point.x;
                         new_size.clamp(
-                            panel_cfg.min_left_size,
-                            (available_size.width - current_sizes.right)
-                                .max(panel_cfg.min_left_size),
+                            140.0,
+                            (available_size.width - current_sizes.right).max(140.0),
                         )
                     }
                     PanelLocation::Right => {
                         let new_size =
                             current_sizes.right - pointer_event.pos.x + drag_start_point.x;
                         new_size.clamp(
-                            panel_cfg.min_right_size,
-                            (available_size.width - current_sizes.left)
-                                .max(panel_cfg.min_right_size),
+                            180.0,
+                            (available_size.width - current_sizes.left).max(180.0),
                         )
                     }
                     PanelLocation::Bottom => {
                         let new_size =
                             current_sizes.bottom - pointer_event.pos.y + drag_start_point.y;
-                        new_size.max(panel_cfg.min_bottom_size)
+                        new_size.max(120.0)
                     }
                 };
                 sizes.update(|s| match location {
@@ -338,8 +334,8 @@ fn resize_handle(
     .style(move |s| {
         let dragging = drag_start.get().is_some();
         let is_bottom = location == PanelLocation::Bottom;
-        let hw = theme().panel.handle_width as f32;
-        let half_hw = hw / 2.0 - theme().panel.border_width as f32;
+        let hw: f32 = 4.0;
+        let half_hw = hw / 2.0 - 1.0;
 
         s.apply_if(is_bottom, |s| {
             s.width_pct(100.0)
@@ -358,12 +354,12 @@ fn resize_handle(
                 })
         })
         .apply_if(dragging, |s| {
-            s.background(theme().color.accent)
+            s.background(theme().color.status_active)
                 .apply_if(is_bottom, |s| s.cursor(CursorStyle::RowResize))
                 .apply_if(!is_bottom, |s| s.cursor(CursorStyle::ColResize))
         })
         .hover(|s| {
-            s.background(theme().color.accent)
+            s.background(theme().color.status_active)
                 .apply_if(is_bottom, |s| s.cursor(CursorStyle::RowResize))
                 .apply_if(!is_bottom, |s| s.cursor(CursorStyle::ColResize))
         })

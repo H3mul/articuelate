@@ -78,7 +78,7 @@ fn general_tab(
         format!("Cue {} — {}", pos, name_fn())
     })
     .style(|s| {
-        s.color(theme().color.fg)
+        s.color(theme().color.text_primary)
             .font_size(13.0)
             .font_weight(floem::text::Weight::BOLD)
     });
@@ -123,8 +123,8 @@ fn routing_row(r: usize, routing: RwSignal<[[bool; 4]; 2]>) -> impl IntoView {
     let cell_row = h_stack((c0, c1, c2, c3)).style(|s| s.gap(0.0));
     h_stack((
         text(["In L", "In R"][r]).style(|s| {
-            s.font_family(theme().font.mono.to_string())
-                .color(theme().color.text_dim)
+            s.font_family(theme().font.mono_sm.family.clone())
+                .color(theme().color.text_secondary)
                 .font_size(11.0)
                 .width(44.0)
         }),
@@ -141,22 +141,22 @@ fn cell_button(r: usize, c: usize, routing: RwSignal<[[bool; 4]; 2]>) -> impl In
             s.width(46.0)
                 .height(34.0)
                 .margin(3.0)
-                .font_family(theme().font.mono.to_string())
+                .font_family(theme().font.mono_sm.family.clone())
                 .font_size(12.0)
                 .color(if routing.get()[r][c] {
-                    theme().color.bg
+                    theme().color.text_primary
                 } else {
-                    theme().color.text_dim
+                    theme().color.text_secondary
                 })
                 .background(if routing.get()[r][c] {
-                    theme().color.accent
+                    theme().color.status_active
                 } else {
-                    theme().color.panel_alt
+                    theme().color.bg_overlay
                 })
                 .border(1.0)
-                .border_color(theme().color.border)
+                .border_color(theme().color.border_subtle)
                 .border_radius(4.0)
-                .hover(|s| s.background(theme().color.border))
+                .hover(|s| s.background(theme().color.border_subtle))
         })
 }
 
@@ -190,8 +190,8 @@ fn field(label_text: &'static str, value: &'static str) -> impl IntoView {
     h_stack((
         text(label_text).style(field_label()),
         text(value).style(|s| {
-            s.color(theme().color.fg)
-                .font_family(theme().font.mono.to_string())
+            s.color(theme().color.text_primary)
+                .font_family(theme().font.mono_sm.family.clone())
                 .font_size(12.0)
         }),
     ))
@@ -200,10 +200,10 @@ fn field(label_text: &'static str, value: &'static str) -> impl IntoView {
 
 fn field_label() -> impl Fn(floem::style::Style) -> floem::style::Style + 'static {
     move |s: floem::style::Style| {
-        s.color(theme().color.text_dim)
+        s.color(theme().color.text_secondary)
             .font_size(11.0)
             .width(110.0)
-            .font_family(theme().font.mono.to_string())
+            .font_family(theme().font.mono_sm.family.clone())
     }
 }
 
@@ -213,23 +213,23 @@ fn field_col() -> impl Fn(floem::style::Style) -> floem::style::Style + 'static 
 
 fn input_style() -> impl Fn(floem::style::Style) -> floem::style::Style + 'static {
     move |s: floem::style::Style| {
-        s.background(theme().color.panel_alt)
-            .color(theme().color.fg)
+        s.background(theme().color.bg_overlay)
+            .color(theme().color.text_primary)
             .border(1.0)
-            .border_color(theme().color.border)
+            .border_color(theme().color.border_subtle)
             .border_radius(4.0)
             .padding_horiz(8.0)
             .padding_vert(4.0)
             .width(90.0)
             .font_size(12.0)
-            .font_family(theme().font.mono.to_string())
+            .font_family(theme().font.mono_sm.family)
     }
 }
 
 fn mono_value() -> impl Fn(floem::style::Style) -> floem::style::Style + 'static {
     move |s: floem::style::Style| {
-        s.color(theme().color.accent)
-            .font_family(theme().font.mono.to_string())
+        s.color(theme().color.status_active)
+            .font_family(theme().font.mono_sm.family)
             .font_size(12.0)
             .width(60.0)
     }

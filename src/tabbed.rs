@@ -91,43 +91,35 @@ impl TabbedWindow {
 
         let switcher = build_switcher(&titles, active, position);
 
-        let content = dyn_container(move || active.get(), move |i: usize| factories[i]())
-            .style(|s| {
-                let bw = theme().panel.border_width as f32;
+        let content =
+            dyn_container(move || active.get(), move |i: usize| factories[i]()).style(|s| {
+                let bw: f32 = 1.0;
                 s.flex_grow(1.0)
                     .min_size(0.0, 0.0)
                     .size_full()
                     .border(bw)
-                    .border_color(theme().color.border)
+                    .border_color(theme().color.border_subtle)
                     .padding(14.0)
-                    .background(theme().color.bg)
+                    .background(theme().color.bg_app)
             });
 
         let inner: AnyView = match position {
-            TabPosition::Top => {
-                v_stack_from_iter([switcher, content.into_any()])
-                    .style(|s| s.flex_col().size_full().min_height(0.0))
-                    .into_any()
-            }
-            TabPosition::Bottom => {
-                v_stack_from_iter([content.into_any(), switcher])
-                    .style(|s| s.flex_col().size_full().min_height(0.0))
-                    .into_any()
-            }
-            TabPosition::Left => {
-                h_stack_from_iter([switcher, content.into_any()])
-                    .style(|s| s.flex_row().size_full().min_width(0.0))
-                    .into_any()
-            }
-            TabPosition::Right => {
-                h_stack_from_iter([content.into_any(), switcher])
-                    .style(|s| s.flex_row().size_full().min_width(0.0))
-                    .into_any()
-            }
+            TabPosition::Top => v_stack_from_iter([switcher, content.into_any()])
+                .style(|s| s.flex_col().size_full().min_height(0.0))
+                .into_any(),
+            TabPosition::Bottom => v_stack_from_iter([content.into_any(), switcher])
+                .style(|s| s.flex_col().size_full().min_height(0.0))
+                .into_any(),
+            TabPosition::Left => h_stack_from_iter([switcher, content.into_any()])
+                .style(|s| s.flex_row().size_full().min_width(0.0))
+                .into_any(),
+            TabPosition::Right => h_stack_from_iter([content.into_any(), switcher])
+                .style(|s| s.flex_row().size_full().min_width(0.0))
+                .into_any(),
         };
 
         container(inner).style(|s| {
-            s.background(theme().color.bg)
+            s.background(theme().color.bg_app)
                 .size_full()
                 .min_size(0.0, 0.0)
         })
@@ -169,7 +161,7 @@ fn build_switcher(
                 s.items_center()
                     .gap(2.0)
                     .width_full()
-                    .background(theme().color.panel)
+                    .background(theme().color.bg_surface)
                     .padding_horiz(8.0)
             })
             .into_any(),
@@ -182,7 +174,7 @@ fn build_switcher(
                 s.items_center()
                     .gap(2.0)
                     .height_full()
-                    .background(theme().color.panel)
+                    .background(theme().color.bg_surface)
                     .padding_vert(8.0)
             })
             .into_any(),
@@ -205,13 +197,13 @@ fn tab_button(
             .font_size(12.0)
             .border(0.0)
             .color(if active.get() == i {
-                theme().color.fg
+                theme().color.text_primary
             } else {
-                theme().color.text_dim
+                theme().color.text_secondary
             })
-            .background(theme().color.panel)
+            .background(theme().color.bg_surface)
             .border_radius(3.0)
-            .hover(|s| s.background(theme().color.panel_alt))
+            .hover(|s| s.background(theme().color.bg_overlay))
     });
 
     match position {
@@ -228,11 +220,11 @@ fn tab_button(
 fn tab_indicator(i: usize, active: RwSignal<usize>, position: TabPosition) -> impl IntoView {
     empty().style(move |s| {
         let line = if active.get() == i {
-            theme().color.accent
+            theme().color.status_active
         } else {
             Color::TRANSPARENT
         };
-        let bw = theme().panel.border_width as f32;
+        let bw: f32 = 1.0;
         match position {
             TabPosition::Top | TabPosition::Bottom => s
                 .height(bw.max(2.0))

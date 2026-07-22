@@ -204,12 +204,12 @@ fn status_bar() -> impl IntoView {
     let left = text("STATUS: Connected (ASIO: Focusrite USB)").style(|s| {
         s.color(theme().color.status_active)
             .font_size(11.0)
-            .font_family(theme().font.mono.to_string())
+            .font_family(theme().font.mono_sm.family.clone())
     });
     let right = text("CPU: 4%   DSP: 12%").style(|s| {
         s.color(theme().color.text_secondary)
             .font_size(11.0)
-            .font_family(theme().font.mono.to_string())
+            .font_family(theme().font.mono_sm.family.clone())
     });
     let spacer = text("").style(|s| s.flex_grow(1.0));
 

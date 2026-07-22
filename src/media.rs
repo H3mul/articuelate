@@ -50,24 +50,24 @@ pub fn view(visible: RwSignal<PanelFlags>) -> impl IntoView {
     let collapse = button(
         Icon::X
             .into_view()
-            .style(|s| s.size(16.0, 16.0).color(theme().color.accent)),
+            .style(|s| s.size(16.0, 16.0).color(theme().color.status_active)),
     )
     .action(move || visible.update(|v| v.right = false))
     .style(|s| {
-        s.background(theme().color.panel_alt)
-            .color(theme().color.accent)
+        s.background(theme().color.bg_overlay)
+            .color(theme().color.status_active)
             .border_radius(4.0)
             .padding_horiz(8.0)
             .padding_vert(4.0)
             .font_size(12.0)
-            .hover(|s| s.background(theme().color.border))
+            .hover(|s| s.background(theme().color.border_subtle))
     });
 
     let header = h_stack((
         text("ACTIVE MEDIA").style(|s| {
-            s.font_family(theme().font.mono.to_string())
+            s.font_family(theme().font.mono_sm.family)
                 .font_size(11.0)
-                .color(theme().color.text_dim)
+                .color(theme().color.text_secondary)
                 .flex_grow(1.0)
         }),
         collapse,
@@ -78,7 +78,7 @@ pub fn view(visible: RwSignal<PanelFlags>) -> impl IntoView {
             .padding_horiz(12.0)
             .padding_vert(8.0)
             .border_bottom(1.0)
-            .border_color(theme().color.border)
+            .border_color(theme().color.border_subtle)
     });
 
     let body = list(channels).style(|s| s.flex_col().gap(14.0).padding(12.0).flex_grow(1.0));
@@ -87,7 +87,7 @@ pub fn view(visible: RwSignal<PanelFlags>) -> impl IntoView {
         s.flex_col()
             .width(260.0)
             .min_width(200.0)
-            .background(theme().color.panel)
+            .background(theme().color.bg_surface)
             .height_full()
     })
 }
@@ -99,8 +99,8 @@ fn channel_view(
 ) -> impl IntoView {
     let _ = idx;
     let db = label(move || format!("{:+.1} dB", db_from_pct(pct.get().0))).style(|s| {
-        s.font_family(theme().font.mono.to_string())
-            .color(theme().color.meter)
+        s.font_family(theme().font.mono_sm.family)
+            .color(theme().color.status_status_running)
             .font_size(11.0)
     });
 
@@ -115,8 +115,11 @@ fn channel_view(
 
     v_stack((
         h_stack((
-            label(move || name.to_string())
-                .style(|s| s.color(theme().color.fg).font_size(12.0).flex_grow(1.0)),
+            label(move || name.to_string()).style(|s| {
+                s.color(theme().color.text_primary)
+                    .font_size(12.0)
+                    .flex_grow(1.0)
+            }),
             db,
         ))
         .style(|s| s.items_center().gap(8.0)),

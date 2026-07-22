@@ -49,14 +49,14 @@ pub fn view(
     .style(|s| s.flex_col().width_full());
 
     let header = text("CUES").style(|s| {
-        s.font_family(theme().font.mono.to_string())
+        s.font_family(theme().font.mono_sm.family.clone())
             .font_size(11.0)
-            .color(theme().color.text_dim)
+            .color(theme().color.text_secondary)
             .padding_horiz(12.0)
             .padding_vert(8.0)
-            .background(theme().color.panel)
+            .background(theme().color.bg_surface)
             .border_bottom(1.0)
-            .border_color(theme().color.border)
+            .border_color(theme().color.border_subtle)
             .width_full()
     });
 
@@ -68,9 +68,9 @@ pub fn view(
         s.flex_col()
             .flex_grow(1.0)
             .min_width(0.0)
-            .background(theme().color.bg)
+            .background(theme().color.bg_app)
             .border_right(1.0)
-            .border_color(theme().color.border)
+            .border_color(theme().color.border_subtle)
     })
 }
 
@@ -91,21 +91,21 @@ fn cue_row(
             mode: TriggerMode::Playhead,
             ..
         } => text(trigger.badge()).style(|s| {
-            s.color(theme().color.text_dim)
-                .font_family(theme().font.mono.to_string())
+            s.color(theme().color.text_secondary)
+                .font_family(theme().font.mono_sm.family.clone())
                 .font_size(9.0)
                 .border(1.0)
-                .border_color(theme().color.border)
+                .border_color(theme().color.border_subtle)
                 .border_radius(3.0)
                 .padding_horiz(5.0)
                 .padding_vert(1.0)
         }),
         other => text(other.badge()).style(|s| {
-            s.color(theme().color.lapce_blue)
-                .font_family(theme().font.mono.to_string())
+            s.color(theme().color.status_active)
+                .font_family(theme().font.mono_sm.family.clone())
                 .font_size(9.0)
                 .border(1.0)
-                .border_color(theme().color.lapce_blue.multiply_alpha(0.5))
+                .border_color(theme().color.status_active.multiply_alpha(0.5))
                 .border_radius(3.0)
                 .padding_horiz(5.0)
                 .padding_vert(1.0)
@@ -114,7 +114,7 @@ fn cue_row(
 
     let header_line = h_stack((
         label(move || name.clone()).style(|s| {
-            s.color(theme().color.fg)
+            s.color(theme().color.text_primary)
                 .font_size(13.0)
                 .font_weight(floem::text::Weight::BOLD)
         }),
@@ -133,14 +133,14 @@ fn cue_row(
                 .padding_horiz(12.0)
                 .padding_vert(8.0)
                 .background(if is_selected() {
-                    theme().color.accent_dim.multiply_alpha(0.22)
+                    theme().color.status_active.multiply_alpha(0.22)
                 } else {
                     Color::TRANSPARENT
                 })
                 .border_bottom(1.0)
-                .border_color(theme().color.border)
+                .border_color(theme().color.border_subtle)
                 .apply_if(act_c.get() == Some(cid_c), |s| {
-                    s.border_left(3.0).border_color(theme().color.accent)
+                    s.border_left(3.0).border_color(theme().color.status_active)
                 })
         })
         .on_click(move |_| {
