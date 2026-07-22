@@ -31,6 +31,7 @@ pub struct App {
     workspace: Arc<ArcSwap<WorkspaceState>>,
     exec_state_rx: Receiver<Arc<ExecutionState>>,
     events_tx: Sender<UiEvent>,
+    theme_signal: ThemeSignal,
 }
 
 impl App {
@@ -42,7 +43,7 @@ impl App {
         workspace: Arc<ArcSwap<WorkspaceState>>,
         exec_state_rx: watch::Receiver<Arc<ExecutionState>>,
         events_tx: Sender<UiEvent>,
-    ) -> (Self, impl Future<Output = ()> + Send + 'static) {
+    ) -> (Self, impl Future<Output = ()> + Send + 'static, ThemeSignal) {
         let (ui_exec_state_tx, ui_exec_state_rx) = crossbeam_channel::unbounded();
         let mut exec_state_r = exec_state_rx;
         let initial_val = exec_state_r.borrow().clone();
@@ -57,13 +58,17 @@ impl App {
             }
         };
 
+        let theme_signal: ThemeSignal = create_signal(load_theme());
+
         (
             Self {
                 workspace,
                 exec_state_rx: ui_exec_state_rx,
                 events_tx,
+                theme_signal,
             },
             state_forwarder,
+            theme_signal,
         )
     }
 
@@ -72,6 +77,7 @@ impl App {
             workspace,
             exec_state_rx,
             events_tx,
+            theme_signal,
         } = self;
 
         Application::new()
@@ -80,9 +86,8 @@ impl App {
                     let exec_state_signal_r =
                         create_signal_from_channel::<Arc<ExecutionState>>(exec_state_rx);
 
-                    // Create the theme signal and provide it as context so
-                    // `theme()` works anywhere in the view tree.
-                    let theme_signal: ThemeSignal = create_signal(load_theme());
+                    // Provide the theme signal as context so `theme()` works
+                    // anywhere in the view tree.
                     provide_context(theme_signal);
 
                     // A counter that bumps on theme change, driving a full

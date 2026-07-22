@@ -18,13 +18,16 @@
 //! file and the declaration dict, e.g. `theme().color.bg` or
 //! `theme().font.font_size`.
 
+use std::path::Path;
+
 use floem::{
     peniko::Color,
-    reactive::{ReadSignal, SignalGet, WriteSignal, use_context},
+    reactive::{ReadSignal, SignalGet, SignalUpdate, WriteSignal, use_context},
     style::Style,
     text::Weight,
     views::scroll::{ScrollClass, ScrollCustomStyle},
 };
+use notify::{EventKind, RecursiveMode, Watcher, event::ModifyKind};
 use toml::Value;
 
 // --- toml value extraction ------------------------------------------------
@@ -351,6 +354,71 @@ pub fn global_stylesheet(s: Style) -> Style {
         s.size_full()
             .min_size(0.0, 0.0)
             .apply_custom(ScrollCustomStyle::new().handle_thickness(theme().dim.space_xs))
+    })
+}
+
+// --- live reload ----------------------------------------------------------
+
+/// Spawn an async file watcher task on the current tokio runtime that
+/// monitors `themes/` for changes to `.toml` files and pushes reloaded
+/// themes into `write`.
+///
+/// The watcher itself uses `notify` (synchronous) and bridges events to
+/// an async channel. The watcher instance is intentionally leaked so it
+/// lives for the lifetime of the program.
+pub fn watch_theme_async(
+    write: WriteSignal<Theme>,
+) -> std::pin::Pin<Box<dyn Future<Output = ()> + Send>> {
+    let (async_tx, mut async_rx) = tokio::sync::mpsc::channel::<()>(10);
+
+    let mut watcher = notify::RecommendedWatcher::new(
+        move |res: Result<notify::Event, notify::Error>| {
+            if let Ok(event) = res {
+                let relevant = matches!(
+                    event.kind,
+                    EventKind::Modify(ModifyKind::Data(_))
+                        | EventKind::Create(_)
+                        | EventKind::Remove(_)
+                );
+                if relevant
+                    && event
+                        .paths
+                        .iter()
+                        .any(|p| p.extension().map_or(false, |e| e == "toml"))
+                {
+                    let _ = async_tx.try_send(());
+                }
+            }
+        },
+        notify::Config::default(),
+    )
+    .expect("failed to create theme file watcher");
+
+    // Start watching the themes/ directory.
+    if watcher
+        .watch(Path::new("themes"), RecursiveMode::NonRecursive)
+        .is_err()
+    {
+        // themes/ doesn't exist — nothing to watch. Return a no-op future.
+        return Box::pin(async move {});
+    }
+
+    // Leak the watcher so it continues monitoring for the program's lifetime.
+    std::mem::forget(watcher);
+
+    // Return the async worker that reads the file and updates the signal.
+    Box::pin(async move {
+        while let Some(_) = async_rx.recv().await {
+            // Debounce: wait for a quiet period after the last change.
+            // Drain any rapid-fire events within a 200ms window.
+            loop {
+                tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+                if async_rx.try_recv().is_err() {
+                    break;
+                }
+            }
+            write.set(load_theme());
+        }
     })
 }
 

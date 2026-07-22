@@ -17,3 +17,4 @@ serde = { version = "1.0.229", features = ["derive", "rc"] }
 yaml_serde = "0.10.4"
 arc-swap = "1.9.2"
 crossbeam-channel = "0.5.16"
+notify = { version = "7", default-features = false, features = ["macos_kqueue"] }
