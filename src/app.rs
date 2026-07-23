@@ -9,7 +9,7 @@ use floem::ext_event::create_signal_from_channel;
 use floem::keyboard::Key;
 use floem::reactive::{
     ReadSignal, RwSignal, SignalGet, SignalUpdate, SignalWith, create_effect, create_memo,
-    create_rw_signal, create_signal, provide_context,
+    create_rw_signal, provide_context,
 };
 use floem::views::{Decorators, dyn_container, h_stack, text, v_stack};
 use floem::window::WindowConfig;
@@ -23,7 +23,7 @@ use crate::media;
 use crate::model::{ExecutionState, Playhead, WorkspaceState};
 use crate::panel::PanelSystem;
 
-use crate::theme::{ThemeSignal, global_stylesheet, load_theme, theme};
+use crate::theme::{Theme, global_stylesheet, load_theme, theme};
 use crate::toolbar;
 
 /// The Floem application and its UI-side execution-state channel.
@@ -31,7 +31,8 @@ pub struct App {
     workspace: Arc<ArcSwap<WorkspaceState>>,
     exec_state_rx: Receiver<Arc<ExecutionState>>,
     events_tx: Sender<UiEvent>,
-    theme_signal: ThemeSignal,
+    theme_signal: RwSignal<Theme>,
+    theme_rx: crossbeam_channel::Receiver<Theme>,
 }
 
 impl App {
@@ -43,7 +44,11 @@ impl App {
         workspace: Arc<ArcSwap<WorkspaceState>>,
         exec_state_rx: watch::Receiver<Arc<ExecutionState>>,
         events_tx: Sender<UiEvent>,
-    ) -> (Self, impl Future<Output = ()> + Send + 'static, ThemeSignal) {
+    ) -> (
+        Self,
+        impl Future<Output = ()> + Send + 'static,
+        crossbeam_channel::Sender<Theme>,
+    ) {
         let (ui_exec_state_tx, ui_exec_state_rx) = crossbeam_channel::unbounded();
         let mut exec_state_r = exec_state_rx;
         let initial_val = exec_state_r.borrow().clone();
@@ -58,7 +63,8 @@ impl App {
             }
         };
 
-        let theme_signal: ThemeSignal = create_signal(load_theme());
+        let (theme_tx, theme_rx) = crossbeam_channel::unbounded();
+        let theme_signal = create_rw_signal(load_theme());
 
         (
             Self {
@@ -66,9 +72,10 @@ impl App {
                 exec_state_rx: ui_exec_state_rx,
                 events_tx,
                 theme_signal,
+                theme_rx,
             },
             state_forwarder,
-            theme_signal,
+            theme_tx,
         )
     }
 
@@ -78,6 +85,7 @@ impl App {
             exec_state_rx,
             events_tx,
             theme_signal,
+            theme_rx,
         } = self;
 
         Application::new()
@@ -90,16 +98,20 @@ impl App {
                     // anywhere in the view tree.
                     provide_context(theme_signal);
 
+                    // Bridge theme changes from the tokio thread into the Floem
+                    // reactive system via a crossbeam channel, so that the
+                    // RwSignal is always set on the Floem main thread.
+                    let theme_from_channel = create_signal_from_channel::<Theme>(theme_rx);
+
                     // A counter that bumps on theme change, driving a full
                     // rebuild via dyn_container.
                     let theme_gen = create_rw_signal(0usize);
-                    {
-                        let (rx, _) = theme_signal;
-                        create_effect(move |_| {
-                            rx.get();
+                    create_effect(move |_| {
+                        if let Some(theme) = theme_from_channel.get() {
+                            theme_signal.set(theme);
                             theme_gen.update(|n| *n = n.wrapping_add(1));
-                        });
-                    }
+                        }
+                    });
 
                     let ws = workspace.clone();
                     let tx = events_tx.clone();

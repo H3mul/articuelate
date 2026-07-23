@@ -16,16 +16,17 @@
 
 use std::path::Path;
 
+use crossbeam_channel::Sender;
 use floem::{
     peniko::Color,
-    reactive::{ReadSignal, SignalGet, SignalUpdate, WriteSignal, use_context},
+    reactive::{RwSignal, SignalGet, use_context},
     style::Style,
     text::Weight,
     views::scroll::{ScrollClass, ScrollCustomStyle},
 };
-use notify::{EventKind, RecursiveMode, Watcher, event::ModifyKind};
+use notify::{RecursiveMode, Watcher};
 use serde::Deserialize;
-use serde_with::{DeserializeAs, serde_as};
+use serde_with::DeserializeAs;
 
 // --- custom deserializer helpers ------------------------------------------
 
@@ -82,6 +83,7 @@ fn hex_to_color(s: &str) -> Result<Color, String> {
 
 /// A bundle of typography attributes for a single text role.
 #[derive(Debug, Clone, Deserialize)]
+#[allow(dead_code)]
 pub struct FontStyle {
     pub family: String,
     pub size: f32,
@@ -99,6 +101,7 @@ pub struct FontStyle {
 )]
 #[serde_with::serde_as]
 #[derive(Debug, Clone, Deserialize)]
+#[allow(dead_code)]
 pub struct ColorTheme {
     pub bg_app: Color,
     pub bg_surface: Color,
@@ -119,6 +122,7 @@ pub struct ColorTheme {
 
 /// Font / typography attributes.
 #[derive(Debug, Clone, Deserialize)]
+#[allow(dead_code)]
 pub struct FontTheme {
     pub mono_sm: FontStyle,
     pub mono_xl: FontStyle,
@@ -129,6 +133,7 @@ pub struct FontTheme {
 
 /// Dimension / spacing attributes.
 #[derive(Debug, Clone, Deserialize)]
+#[allow(dead_code)]
 pub struct DimTheme {
     pub space_xs: f32,
     pub space_sm: f32,
@@ -153,8 +158,7 @@ fn parse_theme(toml_str: &str) -> Theme {
 
 // --- resolution -----------------------------------------------------------
 
-/// Type alias for the theme signal tuple passed through Floem context.
-pub type ThemeSignal = (ReadSignal<Theme>, WriteSignal<Theme>);
+type ThemeSignal = RwSignal<Theme>;
 
 /// Fetch the current theme from Floem context.
 ///
@@ -162,8 +166,8 @@ pub type ThemeSignal = (ReadSignal<Theme>, WriteSignal<Theme>);
 /// dependencies — the top-level `dyn_container` in `app_view` is the single
 /// dependency that triggers a full rebuild on theme change.
 pub fn theme() -> Theme {
-    let (rx, _) = use_context::<ThemeSignal>().expect("theme signal not provided");
-    rx.get_untracked()
+    let signal = use_context::<ThemeSignal>().expect("theme signal not provided");
+    signal.get_untracked()
 }
 
 /// Grab the first `.toml` file in `themes/` and parse it as the theme.
@@ -203,26 +207,18 @@ pub fn global_stylesheet(s: Style) -> Style {
 /// The watcher itself uses `notify` (synchronous) and bridges events to
 /// an async channel. The watcher instance is intentionally leaked so it
 /// lives for the lifetime of the program.
-pub fn watch_theme_async(
-    write: WriteSignal<Theme>,
-) -> std::pin::Pin<Box<dyn Future<Output = ()> + Send>> {
+pub fn watch_theme_async(tx: Sender<Theme>) -> std::pin::Pin<Box<dyn Future<Output = ()> + Send>> {
     let (async_tx, mut async_rx) = tokio::sync::mpsc::channel::<()>(10);
 
     let mut watcher = notify::RecommendedWatcher::new(
         move |res: Result<notify::Event, notify::Error>| {
             if let Ok(event) = res {
-                let relevant = matches!(
-                    event.kind,
-                    EventKind::Modify(ModifyKind::Data(_))
-                        | EventKind::Create(_)
-                        | EventKind::Remove(_)
-                );
-                if relevant
-                    && event
-                        .paths
-                        .iter()
-                        .any(|p| p.extension().map_or(false, |e| e == "toml"))
-                {
+                let is_toml = event
+                    .paths
+                    .iter()
+                    .any(|p| p.extension().map_or(false, |e| e == "toml"));
+                if is_toml {
+                    eprintln!("notify event: {:?} {:?}", event.kind, event.paths);
                     let _ = async_tx.try_send(());
                 }
             }
@@ -250,7 +246,7 @@ pub fn watch_theme_async(
                     break;
                 }
             }
-            write.set(load_theme());
+            let _ = tx.send(load_theme());
         }
     })
 }
