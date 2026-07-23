@@ -10,16 +10,6 @@ use crate::{
 };
 
 pub fn view(panel_system: PanelSystem) -> impl IntoView {
-    let _left = text("STATUS: Connected (ASIO: Focusrite USB)").style(|s| {
-        s.color(theme().color.status_active)
-            .font_size(11.0)
-            .font_family(theme().font.mono_sm.family)
-    });
-    let _right = text("CPU: 4%   DSP: 12%").style(|s| {
-        s.color(theme().color.text_secondary)
-            .font_size(11.0)
-            .font_family(theme().font.mono_sm.family)
-    });
     let spacer = text("").style(|s| s.flex_grow(1.0));
 
     let bottom_toggle = panel_system
@@ -38,9 +28,9 @@ pub fn view(panel_system: PanelSystem) -> impl IntoView {
         s.items_center()
             .gap(theme().dim.space_xs / 2.0)
             .padding_horiz(theme().dim.space_md)
-            .background(theme().color.bg_app)
+            .background(theme().color.bg_surface)
             .border_top(theme().dim.border_size)
-            .border_color(theme().color.border_subtle)
+            .border_color(theme().color.border_divider)
             .height(theme().dim.status_bar_height)
     }),))
     .style(|s| s.width_full())

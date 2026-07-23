@@ -18,7 +18,8 @@ use tokio::sync::{mpsc::Sender, watch};
 use crate::exec::UiEvent;
 use crate::model::{ExecutionState, Playhead, WorkspaceState};
 use crate::style::{Theme, global_stylesheet, load_theme, theme};
-use crate::ui::{cuelist, detail, media, panel::PanelSystem, status_bar, toolbar};
+use crate::ui::{cuelist, panel::PanelSystem, status_bar, toolbar};
+use crate::ui::{detail, media};
 
 /// The Floem application and its UI-side execution-state channel.
 pub struct App {
@@ -158,7 +159,6 @@ fn app_view(
 
     let selected = create_rw_signal(None);
     let active_cue = create_rw_signal(None);
-    let search = create_rw_signal(String::new());
 
     {
         let act = active_cue;
@@ -176,26 +176,29 @@ fn app_view(
         });
     }
 
-    let cuelist_view = cuelist::view(cuelist_memo, selected, active_cue, search);
+    let cuelist_view = cuelist::view(cuelist_memo, selected, active_cue);
 
-    let media = media::view();
-    let detail = detail::view(selected, cuelist_memo);
+    let _media = media::view();
+    let _detail = detail::view(selected, cuelist_memo);
 
     let panel_system = PanelSystem::new();
 
-    let toolbar = toolbar::view(cuelist_memo, active_cue, selected, search, events_tx);
+    let toolbar = toolbar::view(cuelist_memo, active_cue, selected, events_tx);
+
+    let main_view = floem::views::v_stack((toolbar, cuelist_view))
+        .style(|s| s.width_full().height_full().min_size(0.0, 0.0));
 
     let panels = panel_system
         .builder()
-        .with_main(cuelist_view)
-        .with_bottom(detail)
-        .with_right(media)
+        .with_main(main_view)
+        // .with_bottom(detail)
+        // .with_right(media)
         .build()
         .into_view();
 
     let status_bar = status_bar::view(panel_system);
 
-    v_stack((toolbar.into_any(), panels, status_bar.into_any()))
+    v_stack((panels, status_bar.into_any()))
         .style(|s| {
             s.flex_col()
                 .width_full()

@@ -7,11 +7,12 @@
 
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
+use std::path::PathBuf;
 use std::sync::Arc;
 use uuid::Uuid;
 
 /// How a cue advances to the next one in the chain.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub enum TriggerMode {
     /// Cue triggers when the playhead reaches it
     #[default]
@@ -22,7 +23,7 @@ pub enum TriggerMode {
     AfterCue,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Trigger {
     pub mode: TriggerMode,
     pub target: Option<CueId>,
@@ -35,16 +36,9 @@ impl Trigger {
             target: None,
         }
     }
-    pub fn badge(self) -> &'static str {
-        match self.mode {
-            TriggerMode::Playhead => "PLAYHEAD",
-            TriggerMode::WithCue => "WITH-CUE",
-            TriggerMode::AfterCue => "AFTER-CUE",
-        }
-    }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Eq, PartialEq, Hash, Serialize, Deserialize)]
 #[serde(transparent)]
 pub struct CueId(Uuid);
 
@@ -54,11 +48,22 @@ impl CueId {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub enum CueKind {
+    Media {
+        file_path: PathBuf,
+        volume_db: f32,
+        looping: bool,
+        fade_duration_sec: f32,
+    },
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Cue {
     pub id: CueId,
     pub name: String,
     pub trigger: Trigger,
+    pub kind: CueKind,
 }
 
 impl Cue {
@@ -70,6 +75,12 @@ impl Cue {
             id: CueId::new(),
             name: name.into(),
             trigger: trigger,
+            kind: CueKind::Media {
+                file_path: PathBuf::new(),
+                volume_db: 0.0,
+                looping: false,
+                fade_duration_sec: 0.0,
+            },
         }
     }
 }
@@ -106,7 +117,7 @@ pub fn sample_active_media() -> Vec<Arc<str>> {
 /// Held behind an `Arc` so the UI can cheaply clone the handle into the
 /// Execution Thread, which reads it lock-free on every event (e.g. GO) without
 /// ever taking a lock or copying the cue list.
-#[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct Cuelist {
     /// The flat cue chain. For now a simple `Vec`; the execution thread reads
     /// `cues` directly to resolve the current playhead target.
@@ -122,6 +133,7 @@ impl Cuelist {
         list
     }
 
+    #[allow(dead_code)]
     pub fn len(&self) -> usize {
         self.order.len()
     }
@@ -159,7 +171,7 @@ impl Cuelist {
     }
 }
 
-#[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct WorkspaceState {
     pub cuelist: Arc<Cuelist>,
 }
@@ -172,7 +184,7 @@ impl WorkspaceState {
     }
 }
 
-#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub enum Playhead {
     #[default]
     Stopped,
@@ -183,7 +195,7 @@ pub enum Playhead {
 ///
 /// Broadcast to the UI through a `tokio::sync::watch` channel; the UI mirrors
 /// it into a Floem `RwSignal` so the rest of the reactive UI can react to it.
-#[derive(Clone, Debug, Default, Eq, PartialEq)]
+#[derive(Clone, Debug, Default, PartialEq)]
 pub struct ExecutionState {
     /// Linear playhead: the index of the cue the next GO will fire (and that
     /// the most recent GO fired). Advanced by the Execution Thread.

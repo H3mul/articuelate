@@ -76,7 +76,7 @@ fn channel_view(
     let _ = idx;
     let db = label(move || format!("{:+.1} dB", db_from_pct(pct.get().0))).style(|s| {
         s.font_family(theme().font.mono_sm.family)
-            .color(theme().color.status_status_running)
+            .color(theme().color.status_running)
             .font_size(11.0)
     });
 

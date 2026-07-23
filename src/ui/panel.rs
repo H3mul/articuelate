@@ -98,6 +98,7 @@ impl PanelSystemBuilder {
     }
 
     /// Register the required centre window.
+    #[allow(dead_code)]
     pub fn with_main(mut self, view: impl IntoView + 'static) -> Self {
         self.main = Some(view.into_any());
         self
@@ -109,11 +110,13 @@ impl PanelSystemBuilder {
         self
     }
 
+    #[allow(dead_code)]
     pub fn with_right(mut self, view: impl IntoView + 'static) -> Self {
         self.right = Some(view.into_any());
         self
     }
 
+    #[allow(dead_code)]
     pub fn with_bottom(mut self, view: impl IntoView + 'static) -> Self {
         self.bottom = Some(view.into_any());
         self
@@ -151,17 +154,16 @@ impl PanelSystemBuilder {
             .main
             .expect("PanelSystem::build requires a Main window");
 
-        let main_view = container(scroll(main.into_view()).style(|s| s.width_full().height_full()))
-            .style(|s| {
-                // A definite zero width makes this a genuine remaining-space flex item.
-                // The submitted view must not contribute its intrinsic width to layout.
-                s.width(0.0)
-                    .height_full()
-                    .flex_grow(1.0)
-                    .flex_shrink(1.0)
-                    .flex_basis(0.0)
-                    .min_size(0.0, 0.0)
-            });
+        let main_view = container(main.into_view()).style(|s| {
+            // A definite zero width makes this a genuine remaining-space flex item.
+            // The submitted view must not contribute its intrinsic width to layout.
+            s.width_full()
+                .height_full()
+                .flex_grow(1.0)
+                .flex_shrink(1.0)
+                .flex_basis(0.0)
+                .min_size(0.0, 0.0)
+        });
 
         let left_view = self.left.map_or_else(
             || empty().into_any(),
@@ -246,7 +248,7 @@ impl PanelSystem {
             })
             .style(move |s| {
                 s.apply_if(hide(), |s| s.display(Display::None))
-                    .apply_if(button_active(), |s| s.color(theme().color.status_active))
+                    .apply_if(button_active(), |s| s.color(theme().color.status_playhead))
             })
     }
 }
@@ -410,12 +412,12 @@ fn resize_handle(
                 })
         })
         .apply_if(dragging, |s| {
-            s.background(theme().color.status_active)
+            s.background(theme().color.status_playhead)
                 .apply_if(is_bottom, |s| s.cursor(CursorStyle::RowResize))
                 .apply_if(!is_bottom, |s| s.cursor(CursorStyle::ColResize))
         })
         .hover(|s| {
-            s.background(theme().color.status_active)
+            s.background(theme().color.status_playhead)
                 .apply_if(is_bottom, |s| s.cursor(CursorStyle::RowResize))
                 .apply_if(!is_bottom, |s| s.cursor(CursorStyle::ColResize))
         })

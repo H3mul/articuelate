@@ -1,4 +1,4 @@
-# Articuelate colour theme
+# Articuelate colour theme (Zed-inspired, Macchiato-based)
 
 [font.mono_sm]
 family = "JetBrains Mono"
@@ -44,43 +44,44 @@ border_size = 1.0
 
 status_bar_height = 24.0
 status_icon_size = 14.0
+toolbar_height = 36.0
 
 radius_sm = 3.0
+radius_md = 5.0 # For buttons and inputs
 
 [color]
 
-bg_app              = "#181926"  # Window canvas & deepest inset wells
-bg_surface          = "#1E2030"  # Primary panels (Cuelist, Inspector background)
-bg_surface_odd      = "#24273A"  # Striped table rows / secondary surface contrast
+# --- Environment & Surfaces (Dark to Light) ---
+bg_app              = "#181926"  # Base canvas; window background; separator gutters
+bg_surface          = "#1E2030"  # Primary panel surfaces (Main Cuelist, Active Cues panel)
+bg_surface_raised   = "#24273A"  # Slightly elevated surfaces; row zebra-striping (even rows)
+bg_surface_overlay  = "#363A4F"  # Popovers, floating menus, high-elevation surfaces
 
-bg_hover            = "#363a4f" # Hover states, active tab backgrounds, secondary buttons.
-bg_overlay          = "#494d64" # Input controls, table headers, inactive rows, cards.
+# --- Interactable "Punch-Down" Elements (Darker than Surface) ---
+# Used for buttons, inputs, and controls resting on bg_surface
+element_bg          = "#11121C"  # Default interactable (Darker than bg_app to punch down)
+element_border      = "#363A4F"  # Border to define the element shape
+element_bg_hover    = "#181926"  # Hover state (Lifts slightly towards app bg)
+element_bg_active   = "#090A0F"  # Pressed/Active state (Deepest inset)
 
-# --- Inset Interactable Foundations ("Punch-Down") ---
-element_bg            = "#141520"  # Standard button/input default background (Darker than panel!)
-element_border        = "#2B2D42"  # Subtle 1px frame to hold shape against bg_surface
-element_bg_hover      = "#282A40"  # Hover: Lifts toward panel lightness
-element_bg_active     = "#0E0F18"  # Active/Pressed: Insets deeper into darks
+# --- Selection & Focus ---
+bg_selection        = "#2F3C5E"  # Background for selected cue row (Subtle blue tint, replaces zebra)
+bg_selection_active = "#405382"  # Background for selected AND focused cue row
+border_focus        = "#8AADF4"  # Focus ring color (Macchiato Blue)
 
-# --- Accent & Status Focus Overlay ---
-border_focus          = "#8087A2"  # Focused element ring
-accent_active         = "#00A3FF"  # Playhead / Selection highlight
-border_subtle         = "#6e738d" # Standard divider for table rows and pane borders.
+# --- Text & Typography ---
+text_primary        = "#CAD3F5"  # High-contrast body, cue titles, times
+text_secondary      = "#B8C0E0"  # Column headers, cue numbers, inactive tabs, unit labels
+text_disabled       = "#A5ADCB"  # Disabled cues, muted parameters, placeholders
 
-# High-contrast body, cue titles, times. Primary legibility.
-text_primary = "#cad3f5"
-# Column headers, cue numbers, inactive tabs, unit labels (sec, dB).
-text_secondary = "#b8c0e0"
-# Disabled cues, muted parameters.
-text_disabled = "#a5adcb"
+# --- Status & Semantic Colors (Macchiato Palette) ---
+status_playhead     = "#8AADF4"  # Active Playhead indicator / Selection highlight (Blue)
+status_running      = "#A6DA95"  # Active Playing Cue background tint / green glow (Green)
+status_wait         = "#EED49F"  # Pre-Wait / Post-Wait Active (Yellow/Amber)
+status_error        = "#EE99A0"  # Broken Cue / Panic Trigger (Red)
+status_standby      = "#C6A0F6"  # Armed / Standby State (Mauve)
+status_group        = "#F5A97F"  # Group cue indicator border (Peach - matching orange box in image)
 
-# Active Playhead / Selected Target (Cyan Blue).
-status_active = "#8aadf4"
-# Active Playing Cue (Green glow/bar).
-status_status_running = "#a6da95"
-# Pre-Wait / Post-Wait Active (Amber).
-status_wait = "#eed49f"
-# Broken Cue / Panic Trigger (Red).
-status_error = "#ee99a0"
-# Armed / Standby State (Purple).
-status_standby = "#c6a0f6"
+# --- Structural Elements ---
+border_subtle       = "#181926"  # Same as bg_app; used to separate panels (creates 'gutters')
+border_divider      = "#363A4F"  # Internal dividers within panels (e.g., column separators, header border)

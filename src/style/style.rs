@@ -1,6 +1,5 @@
 //! Global stylesheet for the Articuelate application.
 
-use floem::peniko::Color;
 use floem::style::Style;
 use floem::style_class;
 use floem::views::ButtonClass;
@@ -20,23 +19,25 @@ pub fn global_stylesheet(s: Style) -> Style {
             .apply_custom(ScrollCustomStyle::new().handle_thickness(theme().dim.space_xs))
     })
     .class(StatusBarButton, |s| {
-        s.color(theme().color.text_primary)
-            .background(Color::TRANSPARENT)
-            .border_color(Color::TRANSPARENT)
+        s.color(theme().color.text_secondary)
+            .background(theme().color.element_bg)
+            .border(1.0)
+            .border_color(theme().color.element_border)
             .font_size(theme().dim.status_icon_size)
             .border_radius(theme().dim.radius_sm)
             .padding_horiz(theme().dim.space_xs)
+            .hover(|s| s.background(theme().color.element_bg_hover))
+            .active(|s| s.background(theme().color.element_bg_active))
     })
     .class(ButtonClass, |s| apply_interactable_base_styles(s))
 }
 
 fn apply_interactable_base_styles(s: Style) -> Style {
-    s.background(theme().color.bg_overlay)
-        .hover(|s| s.background(theme().color.bg_hover))
-        .active(|s| s.background(Color::TRANSPARENT))
-        .focus(|s| {
-            s.hover(|s| s.background(theme().color.bg_hover))
-                .active(|s| s.background(Color::TRANSPARENT))
-                .active(|s| s.hover(|s| s.background(theme().color.bg_hover)))
-        })
+    s.background(theme().color.element_bg)
+        .border(1.0)
+        .border_color(theme().color.element_border)
+        .border_radius(theme().dim.radius_sm)
+        .hover(|s| s.background(theme().color.element_bg_hover))
+        .active(|s| s.background(theme().color.element_bg_active))
+        .focus(|s| s.border_color(theme().color.border_focus))
 }

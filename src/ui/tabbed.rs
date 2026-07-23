@@ -203,7 +203,7 @@ fn tab_button(
             })
             .background(theme().color.bg_surface)
             .border_radius(3.0)
-            .hover(|s| s.background(theme().color.bg_overlay))
+            .hover(|s| s.background(theme().color.bg_surface_overlay))
     });
 
     match position {
@@ -220,7 +220,7 @@ fn tab_button(
 fn tab_indicator(i: usize, active: RwSignal<usize>, position: TabPosition) -> impl IntoView {
     empty().style(move |s| {
         let line = if active.get() == i {
-            theme().color.status_active
+            theme().color.status_playhead
         } else {
             Color::TRANSPARENT
         };

@@ -1,143 +1,187 @@
-//! Main cuelist - the central "editor" pane, rendered with Floem's
-//! `virtual_list` so a 5,000-cue show stays instant and memory-light.
+//! Main cuelist table.
 //!
-//! Selection (click) and the live "active" cue are driven by signals, so the
-//! rest of the UI reacts surgically without rebuilding the list.
+//! The view stays virtualized while presenting a compact, Zed-inspired table:
+//! a small icon gutter, one-based cue position, cue name, and timing columns.
 
 use floem::IntoView;
 use floem::event::EventPropagation;
-use floem::peniko::Color;
 use floem::reactive::{Memo, RwSignal, SignalGet, SignalUpdate, SignalWith, create_memo};
+use floem::style::AlignItems;
 use floem::views::{
-    Decorators, VirtualDirection, VirtualItemSize, container, h_stack, label, text, v_stack,
-    virtual_list,
+    Decorators, VirtualDirection, VirtualItemSize, container, h_stack, label, scroll, text,
+    v_stack, virtual_list,
 };
 
 use std::sync::Arc;
 
-use crate::model::{Cue, CueId, Cuelist, Trigger, TriggerMode};
+use crate::model::{Cue, CueId, Cuelist, TriggerMode};
 use crate::style::*;
+
+const NUMBER_WIDTH: f32 = 56.0;
+const TIME_WIDTH: f32 = 92.0;
 
 pub fn view(
     cuelist: impl SignalGet<Arc<Cuelist>> + SignalWith<Arc<Cuelist>> + Copy + 'static,
     selected: RwSignal<Option<CueId>>,
     active_cue: RwSignal<Option<CueId>>,
-    search: RwSignal<String>,
 ) -> impl IntoView {
-    // Filtered copy of the flat chain, keyed by CueId (not an index), so the
-    // list stays correct even when cues reorder at runtime.
-    let filtered: Memo<im::Vector<(CueId, Arc<Cue>)>> = create_memo(move |_| {
-        let q = search.with(|s| s.to_lowercase());
-        cuelist.with(|cl| {
-            cl.iter()
-                .filter(|c| q.is_empty() || c.name.to_lowercase().contains(&q))
-                .map(|c| (c.id, c.clone()))
-                .collect::<im::Vector<_>>()
+    let filtered: Memo<im::Vector<(usize, CueId, Arc<Cue>)>> = create_memo(move |_| {
+        cuelist.with(|list| {
+            list.iter()
+                .enumerate()
+                .map(|(display_index, cue)| (display_index + 1, cue.id, cue.clone()))
+                .collect()
         })
     });
 
-    let list = virtual_list(
+    let rows = virtual_list(
         VirtualDirection::Vertical,
         VirtualItemSize::Fixed(Box::new(|| theme().dim.height_cue_row)),
         move || filtered.get(),
-        move |(id, _)| *id,
-        move |(id, cue)| cue_row(id, cue, selected, active_cue),
+        |(_, id, _)| *id,
+        move |(position, id, cue)| cue_row(position, id, cue, selected, active_cue),
     )
-    .style(|s| s.flex_col().width_full());
-
-    let header = text("CUES").style(|s| {
-        s.font_family(theme().font.mono_sm.family.clone())
-            .font_size(11.0)
-            .color(theme().color.text_secondary)
-            .padding_horiz(12.0)
-            .padding_vert(8.0)
-            .background(theme().color.bg_surface)
-            .width_full()
+    .style(|s| {
+        s.width_full()
+            .flex_col()
+            .min_width(0.0)
+            .min_height(0.0)
+            .align_items(AlignItems::Stretch)
     });
 
-    v_stack((
-        header,
-        list.style(|s| s.width_full().flex_grow(1.0).min_height(0.0)),
+    let rows = scroll(rows).style(|s| {
+        s.width_full()
+            .flex_col()
+            .min_size(0.0, 0.0)
+            .align_items(AlignItems::Stretch)
+    });
+
+    v_stack((table_header(), rows)).style(|s| {
+        s.flex_col()
+            .flex_col()
+            .min_size(0.0, 0.0)
+            .width_full()
+            .align_items(AlignItems::Stretch)
+            .background(theme().color.bg_surface)
+    })
+}
+
+fn table_header() -> impl IntoView {
+    h_stack((
+        header_cell("#", NUMBER_WIDTH),
+        header_cell("Cue", 0.0).style(|s| s.flex_grow(1.0).min_width(0.0)),
+        header_cell("Pre-Delay", TIME_WIDTH),
+        header_cell("Duration", TIME_WIDTH),
+        header_cell("Post-Delay", TIME_WIDTH),
     ))
     .style(|s| {
-        s.flex_col()
-            .flex_grow(1.0)
+        s.items_center()
+            .width_full()
             .min_width(0.0)
-            .background(theme().color.bg_app)
+            .height(theme().dim.height_cue_row)
+            .background(theme().color.bg_surface)
+            .border_bottom(theme().dim.border_size)
+            .border_color(theme().color.border_divider)
+    })
+}
+
+fn header_cell(title: &'static str, width: f32) -> impl IntoView {
+    text(title).style(move |s| {
+        s.apply_if(width > 0.0, |s| s.width(width))
+            .padding_horiz(theme().dim.space_sm)
+            .color(theme().color.text_secondary)
+            .font_family(theme().font.body.family.clone())
+            .font_size(theme().font.body.size as f32)
     })
 }
 
 fn cue_row(
+    position: usize,
     id: CueId,
     cue: Arc<Cue>,
     selected: RwSignal<Option<CueId>>,
     active_cue: RwSignal<Option<CueId>>,
 ) -> impl IntoView {
+    let _is_group = cue.trigger.mode != TriggerMode::Playhead;
     let name = cue.name.clone();
-    let trigger = cue.trigger;
+    // let icon = match cue.trigger.mode {
+    //     TriggerMode::Playhead => Icon::Play,
+    //     TriggerMode::WithCue => Icon::ArrowRight,
+    //     TriggerMode::AfterCue => Icon::ArrowRight,
+    // };
 
-    // Fresh copies for each closure site (RwSignal/CueId are Copy).
-    let (sel, act, cid) = (selected, active_cue, id);
-
-    let trigger_badge = match trigger {
-        Trigger {
-            mode: TriggerMode::Playhead,
-            ..
-        } => text(trigger.badge()).style(|s| {
-            s.color(theme().color.text_secondary)
+    let row = h_stack((
+        // container(icon).style(|s| {
+        //     s.items_center()
+        //         .justify_center()
+        //         .width(ICON_WIDTH)
+        //         .height(theme().dim.height_cue_row)
+        // }),
+        text(position.to_string()).style(|s| {
+            s.width(NUMBER_WIDTH)
+                .padding_horiz(theme().dim.space_sm)
+                .color(theme().color.text_secondary)
                 .font_family(theme().font.mono_sm.family.clone())
-                .font_size(9.0)
-                .border(1.0)
-                .border_color(theme().color.border_subtle)
-                .border_radius(3.0)
-                .padding_horiz(5.0)
-                .padding_vert(1.0)
+                .font_size(theme().font.mono_sm.size as f32)
         }),
-        other => text(other.badge()).style(|s| {
-            s.color(theme().color.status_active)
-                .font_family(theme().font.mono_sm.family.clone())
-                .font_size(9.0)
-                .border(1.0)
-                .border_color(theme().color.status_active.multiply_alpha(0.5))
-                .border_radius(3.0)
-                .padding_horiz(5.0)
-                .padding_vert(1.0)
-        }),
-    };
-
-    let header_line = h_stack((
         label(move || name.clone()).style(|s| {
-            s.color(theme().color.text_primary)
-                .font_size(13.0)
-                .font_weight(floem::text::Weight::BOLD)
+            s.flex_grow(1.0)
+                .min_width(0.0)
+                .padding_horiz(theme().dim.space_sm)
+                .color(theme().color.text_primary)
+                .font_family(theme().font.body.family.clone())
+                .font_size(theme().font.body.size as f32)
         }),
-        text("").style(|s| s.flex_grow(1.0)),
-        trigger_badge,
+        time_cell(),
+        time_cell(),
+        time_cell(),
     ))
-    .style(|s| s.items_center().gap(8.0));
+    .style(|s| {
+        s.items_center()
+            .width_full()
+            .min_width(0.0)
+            .height(theme().dim.height_cue_row)
+    });
 
-    let is_selected = move || sel.get() == Some(cid);
-
-    let (act_c, cid_c) = (act, cid);
-    container(header_line.style(|s| s.flex_col().gap(4.0)))
+    let row_id = id;
+    container(row)
         .style(move |s| {
+            let background = if active_cue.get() == Some(row_id) {
+                theme().color.status_running.multiply_alpha(0.22)
+            } else if selected.get() == Some(row_id) {
+                theme().color.bg_selection_active
+            } else if position % 2 == 0 {
+                theme().color.bg_surface_raised
+            } else {
+                theme().color.bg_surface
+            };
+
             s.width_full()
                 .height(theme().dim.height_cue_row)
-                .padding_horiz(12.0)
-                .padding_vert(8.0)
-                .background(if is_selected() {
-                    theme().color.status_active.multiply_alpha(0.22)
-                } else {
-                    Color::TRANSPARENT
-                })
-                .border_bottom(1.0)
+                .background(background)
+                .border_bottom(theme().dim.border_size)
                 .border_color(theme().color.border_subtle)
-                .apply_if(act_c.get() == Some(cid_c), |s| {
-                    s.border_left(3.0).border_color(theme().color.status_active)
+                // .apply_if(is_group, |s| {
+                //     s.border_left(theme().dim.border_size)
+                //         .border_color(theme().color.status_group)
+                // })
+                .apply_if(active_cue.get() == Some(row_id), |s| {
+                    s.border_left(theme().dim.border_size)
+                        .border_color(theme().color.status_playhead)
                 })
         })
         .on_click(move |_| {
-            sel.set(Some(cid));
+            selected.set(Some(row_id));
             EventPropagation::Stop
         })
+}
+
+fn time_cell() -> impl IntoView {
+    text("0.0s").style(|s| {
+        s.width(TIME_WIDTH)
+            .padding_horiz(theme().dim.space_sm)
+            .color(theme().color.text_disabled)
+            .font_family(theme().font.mono_sm.family.clone())
+            .font_size(theme().font.mono_sm.size as f32)
+    })
 }

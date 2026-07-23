@@ -149,9 +149,9 @@ fn cell_button(r: usize, c: usize, routing: RwSignal<[[bool; 4]; 2]>) -> impl In
                     theme().color.text_secondary
                 })
                 .background(if routing.get()[r][c] {
-                    theme().color.status_active
+                    theme().color.status_playhead
                 } else {
-                    theme().color.bg_overlay
+                    theme().color.bg_surface_overlay
                 })
                 .border(1.0)
                 .border_color(theme().color.border_subtle)
@@ -213,7 +213,7 @@ fn field_col() -> impl Fn(floem::style::Style) -> floem::style::Style + 'static 
 
 fn input_style() -> impl Fn(floem::style::Style) -> floem::style::Style + 'static {
     move |s: floem::style::Style| {
-        s.background(theme().color.bg_overlay)
+        s.background(theme().color.bg_surface_overlay)
             .color(theme().color.text_primary)
             .border(1.0)
             .border_color(theme().color.border_subtle)
@@ -228,7 +228,7 @@ fn input_style() -> impl Fn(floem::style::Style) -> floem::style::Style + 'stati
 
 fn mono_value() -> impl Fn(floem::style::Style) -> floem::style::Style + 'static {
     move |s: floem::style::Style| {
-        s.color(theme().color.status_active)
+        s.color(theme().color.status_playhead)
             .font_family(theme().font.mono_sm.family)
             .font_size(12.0)
             .width(60.0)
