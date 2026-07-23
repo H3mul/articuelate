@@ -5,11 +5,10 @@
 //! two-line edit: add the field to the struct here, then add its value to
 //! the theme file. No boilerplate needs updating.
 //!
-//! The `.toml` file in `themes/` is the single source of truth. At boot we
-//! load the first `.toml` we find and parse it directly; if the directory
-//! doesn't exist we fall back to the baked-in `dark.toml`. A parse failure
-//! is a hard error — every field in the code must have a corresponding
-//! value in the file.
+//! All `.toml` files in `themes/` are merged in alphabetical order (later files
+//! override earlier ones). At boot [`load_theme`] panics on failure so the app
+//! never starts with a broken theme. During hot-reload [`try_load_theme`]
+//! silently returns `None` so the old theme stays in place.
 //!
 //! Access resolved values through [`theme()`], e.g. `theme().color.bg_app`
 //! or `theme().font.font_size`.
@@ -171,36 +170,46 @@ pub fn theme() -> Theme {
     signal.get_untracked()
 }
 
-/// Read all `.toml` files in `themes/`, sort them alphabetically, and merge
-/// them in order (later files override earlier ones). Falls back to the baked-in
-/// `dark.toml` when the directory is missing or empty.
-pub fn load_theme() -> Theme {
-    let mut paths: Vec<_> = match std::fs::read_dir("themes") {
-        Ok(entries) => entries
-            .filter_map(|e| e.ok())
-            .map(|e| e.path())
-            .filter(|p| p.extension().map_or(false, |e| e == "toml"))
-            .collect(),
-        Err(_) => Vec::new(),
-    };
+/// Collect all `.toml` file paths in `themes/`, sorted alphabetically.
+///
+/// Panics if the directory is missing or empty.
+fn collect_theme_paths() -> Vec<std::path::PathBuf> {
+    let mut paths: Vec<_> = std::fs::read_dir("themes")
+        .expect("themes/ directory not found")
+        .filter_map(|e| e.ok())
+        .map(|e| e.path())
+        .filter(|p| p.extension().map_or(false, |e| e == "toml"))
+        .collect();
 
-    if paths.is_empty() {
-        return parse_theme(include_str!("../themes/dark.toml"));
-    }
+    assert!(!paths.is_empty(), "no .toml files found in themes/");
 
     paths.sort();
+    paths
+}
+
+/// Read and merge all `.toml` files in `themes/`. Later alphabetical files
+/// override earlier ones. Returns `None` on any I/O or parse error.
+///
+/// This is the safe variant used during hot-reload — a bad save is silently
+/// ignored so the old theme stays in place.
+pub fn try_load_theme() -> Option<Theme> {
+    let paths = collect_theme_paths();
 
     let mut merged = toml::Table::new();
     for path in &paths {
-        let raw = std::fs::read_to_string(path)
-            .unwrap_or_else(|e| panic!("failed to read theme file {:?}: {e}", path));
-        let table: toml::Table = toml::from_str(&raw)
-            .unwrap_or_else(|e| panic!("failed to parse theme file {:?}: {e}", path));
+        let raw = std::fs::read_to_string(path).ok()?;
+        let table: toml::Table = toml::from_str(&raw).ok()?;
         merge_tables(&mut merged, &table);
     }
 
-    let merged_str = toml::to_string(&merged).expect("failed to serialize merged theme table");
-    parse_theme(&merged_str)
+    let merged_str = toml::to_string(&merged).ok()?;
+    Some(parse_theme(&merged_str))
+}
+
+/// Same as [`try_load_theme`] but panics on failure — called once at boot so
+/// the app never starts with a broken theme.
+pub fn load_theme() -> Theme {
+    try_load_theme().expect("failed to load theme at boot")
 }
 
 /// Recursively merge `overlay` into `base`. Nested tables are merged
@@ -277,7 +286,7 @@ pub fn watch_theme_async(tx: Sender<Theme>) -> std::pin::Pin<Box<dyn Future<Outp
                     break;
                 }
             }
-            let _ = tx.send(load_theme());
+            let _ = try_load_theme().map(|t| tx.send(t));
         }
     })
 }
@@ -288,7 +297,7 @@ mod tests {
 
     #[test]
     fn parses_dark_toml_with_defaults() {
-        let t = parse_theme(include_str!("../themes/dark.toml"));
+        let t = parse_theme(include_str!("../themes/01-base.toml"));
         assert_eq!(t.color.bg_app, Color::rgb8(0x18, 0x19, 0x26));
         assert_eq!(t.color.text_primary, Color::rgb8(0xca, 0xd3, 0xf5));
         assert_eq!(t.dim.space_xs, 4.0);
@@ -297,7 +306,7 @@ mod tests {
 
     #[test]
     fn parses_font_style_from_toml() {
-        let t = parse_theme(include_str!("../themes/dark.toml"));
+        let t = parse_theme(include_str!("../themes/01-base.toml"));
         assert_eq!(t.font.mono_xl.family, "JetBrains Mono");
         assert_eq!(t.font.mono_xl.size, 24.0);
         assert_eq!(t.font.mono_xl.line_height, 30.0);
