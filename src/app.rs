@@ -113,6 +113,7 @@ impl App {
                         move || theme_gen.get(),
                         move |_| app_view(ws.clone(), exec_state_signal_r, tx.clone()),
                     )
+                    // Make the base view fill the window
                     .style(|s| s.size_full().min_size(0.0, 0.0))
                 },
                 Some(

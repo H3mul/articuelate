@@ -23,7 +23,7 @@ fn main() {
     let workspace = Arc::new(ArcSwap::from_pointee(WorkspaceState::sample()));
 
     let (exec_engine, exec_state_rx, events_tx) = ExecutionEngine::init(workspace.clone());
-    let (app, state_forwarder, theme_tx) = App::init(workspace, exec_state_rx, events_tx);
+    let (app, state_forwarder, theme_reload_tx) = App::init(workspace, exec_state_rx, events_tx);
 
     let (tokio_tx, tokio_rx) = std::sync::mpsc::channel();
     std::thread::spawn(move || {
@@ -45,7 +45,7 @@ fn main() {
 
     // Wire up the theme file watcher on the tokio runtime so edits to
     // themes/*.toml trigger live reloads in the UI.
-    let theme_watcher = crate::theme::watch_theme_async(theme_tx);
+    let theme_watcher = crate::theme::watch_theme_async(theme_reload_tx);
     tokio_handle.spawn(theme_watcher);
 
     app.run();
