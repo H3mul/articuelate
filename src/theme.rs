@@ -21,7 +21,10 @@ use floem::{
     reactive::{RwSignal, SignalGet, use_context},
     style::Style,
     text::Weight,
-    views::scroll::{ScrollClass, ScrollCustomStyle},
+    views::{
+        ButtonClass,
+        scroll::{ScrollClass, ScrollCustomStyle},
+    },
 };
 use notify::{RecursiveMode, Watcher};
 use serde::Deserialize;
@@ -151,6 +154,23 @@ pub struct Theme {
     pub dim: DimTheme,
 }
 
+pub fn global_stylesheet(s: Style) -> Style {
+    s.class(ScrollClass, |s| {
+        s.size_full()
+            .min_size(0.0, 0.0)
+            .apply_custom(ScrollCustomStyle::new().handle_thickness(theme().dim.space_xs))
+    })
+    .class(ButtonClass, |s| {
+        s.background(theme().color.bg_overlay)
+            .color(theme().color.text_primary)
+            .border_radius(4.0)
+            .padding_horiz(8.0)
+            .padding_vert(6.0)
+            .font_size(12.0)
+            .hover(|s| s.background(theme().color.border_subtle))
+    })
+}
+
 /// Parse a toml string into a `Theme` via serde.
 fn parse_theme(toml_str: &str) -> Theme {
     toml::from_str(toml_str).expect("failed to parse theme toml")
@@ -229,14 +249,6 @@ fn merge_tables(base: &mut toml::Table, overlay: &toml::Table) {
             }
         }
     }
-}
-
-pub fn global_stylesheet(s: Style) -> Style {
-    s.class(ScrollClass, |s| {
-        s.size_full()
-            .min_size(0.0, 0.0)
-            .apply_custom(ScrollCustomStyle::new().handle_thickness(theme().dim.space_xs))
-    })
 }
 
 // --- live reload ----------------------------------------------------------

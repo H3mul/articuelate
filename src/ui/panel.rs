@@ -20,7 +20,8 @@ use floem::event::{Event, EventListener};
 use floem::kurbo::{Point, Size};
 use floem::reactive::{RwSignal, SignalGet, SignalUpdate, SignalWith, create_rw_signal};
 use floem::style::{AlignItems, CursorStyle};
-use floem::views::{Decorators, container, empty, h_stack, scroll, v_stack};
+use floem::taffy::Display;
+use floem::views::{Decorators, button, container, empty, h_stack, scroll, v_stack};
 use floem::{AnyView, IntoView, View};
 
 use crate::theme::*;
@@ -50,15 +51,12 @@ pub struct PanelFlags {
 }
 
 /// Builder / owner of the panel layout.
+#[derive(Clone, Copy)]
 pub struct PanelSystem {
     sizes: RwSignal<PanelSizes>,
     active: RwSignal<PanelFlags>,
     visible: RwSignal<PanelFlags>,
     available_size: RwSignal<Size>,
-    main: Option<AnyView>,
-    left: Option<AnyView>,
-    right: Option<AnyView>,
-    bottom: Option<AnyView>,
 }
 
 impl PanelSystem {
@@ -72,6 +70,26 @@ impl PanelSystem {
             active: create_rw_signal(PanelFlags::default()),
             visible: create_rw_signal(PanelFlags::default()),
             available_size: create_rw_signal(Size::ZERO),
+        }
+    }
+
+    pub fn builder(self) -> PanelSystemBuilder {
+        PanelSystemBuilder::new(self)
+    }
+}
+
+pub struct PanelSystemBuilder {
+    pub handle: PanelSystem, // Wraps the handle
+    main: Option<AnyView>,
+    left: Option<AnyView>,
+    right: Option<AnyView>,
+    bottom: Option<AnyView>,
+}
+
+impl PanelSystemBuilder {
+    pub fn new(system: PanelSystem) -> Self {
+        PanelSystemBuilder {
+            handle: system,
             main: None,
             left: None,
             right: None,
@@ -101,21 +119,12 @@ impl PanelSystem {
         self
     }
 
-    /// Shared visibility signal so a toolbar can toggle panels.
-    pub fn visibility(&self) -> RwSignal<PanelFlags> {
-        self.visible
-    }
-
-    pub fn active(&self) -> RwSignal<PanelFlags> {
-        self.active
-    }
-
     /// Assemble the full workspace view: toolbar on top, panels in the middle,
     /// status bar at the bottom.
     pub fn build(self) -> impl IntoView {
-        let sizes = self.sizes;
-        let visible = self.visible;
-        let available_size = self.available_size;
+        let sizes = self.handle.sizes;
+        let visible = self.handle.visible;
+        let available_size = self.handle.available_size;
 
         let start_flags = PanelFlags {
             left: self.left.is_some(),
@@ -123,8 +132,8 @@ impl PanelSystem {
             bottom: self.bottom.is_some(),
         };
 
-        self.active.update(|a| *a = start_flags);
-        self.visible.update(|a| *a = start_flags);
+        self.handle.active.update(|a| *a = start_flags);
+        self.handle.visible.update(|a| *a = start_flags);
 
         sizes.update(|s| {
             if self.left.is_none() {
@@ -187,6 +196,45 @@ impl PanelSystem {
                     .width_full()
             })
             .on_resize(move |rect| available_size.set(rect.size()))
+    }
+}
+
+impl PanelSystem {
+    /// Shared visibility signal so a toolbar can toggle panels.
+    pub fn visibility(&self) -> RwSignal<PanelFlags> {
+        self.visible
+    }
+
+    pub fn active(&self) -> RwSignal<PanelFlags> {
+        self.active
+    }
+
+    /// A small chevron/panel icon that toggles an optional panel.
+    pub fn panel_toggle_button(
+        self,
+        child_view: impl IntoView + 'static,
+        which: PanelLocation,
+    ) -> impl IntoView {
+        let active = self.active;
+        let visible = self.visible;
+
+        let hide = move || {
+            active.with(|v| match which {
+                PanelLocation::Left => !v.left,
+                PanelLocation::Right => !v.right,
+                PanelLocation::Bottom => !v.bottom,
+            })
+        };
+
+        button(child_view)
+            .action(move || {
+                visible.update(|v| match which {
+                    PanelLocation::Left => v.left = !v.left,
+                    PanelLocation::Right => v.right = !v.right,
+                    PanelLocation::Bottom => v.bottom = !v.bottom,
+                })
+            })
+            .style(move |s| s.apply_if(hide(), |s| s.display(Display::None)))
     }
 }
 

@@ -6,16 +6,14 @@
 //! which is exactly what an audio app needs for cheap, smooth metering.
 
 use floem::IntoView;
-use floem::reactive::{RwSignal, SignalGet, SignalUpdate, create_get_update, create_rw_signal};
+use floem::reactive::{RwSignal, SignalGet, create_get_update, create_rw_signal};
 use floem::unit::{Pct, UnitExt};
-use floem::views::{Decorators, button, h_stack, label, list, slider, text, v_stack};
-use lucide_floem::Icon;
+use floem::views::{Decorators, h_stack, label, list, slider, text, v_stack};
 
 use crate::model::sample_active_media;
 use crate::theme::*;
-use crate::ui::panel::PanelFlags;
 
-pub fn view(visible: RwSignal<PanelFlags>) -> impl IntoView {
+pub fn view() -> impl IntoView {
     let names = sample_active_media();
     let n = names.len();
 
@@ -47,33 +45,11 @@ pub fn view(visible: RwSignal<PanelFlags>) -> impl IntoView {
         channels.push(channel_view(idx, name, pct));
     }
 
-    let collapse = button(
-        Icon::X
-            .into_view()
-            .style(|s| s.size(16.0, 16.0).color(theme().color.status_active)),
-    )
-    .action(move || visible.update(|v| v.right = false))
-    .style(|s| {
-        s.background(theme().color.bg_overlay)
-            .color(theme().color.status_active)
-            .border_radius(4.0)
-            .padding_horiz(8.0)
-            .padding_vert(4.0)
-            .font_size(12.0)
-            .hover(|s| s.background(theme().color.border_subtle))
-    });
-
-    let header = h_stack((
-        text("ACTIVE MEDIA").style(|s| {
-            s.font_family(theme().font.mono_sm.family)
-                .font_size(11.0)
-                .color(theme().color.text_secondary)
-                .flex_grow(1.0)
-        }),
-        collapse,
-    ))
-    .style(|s| {
-        s.items_center()
+    let header = text("ACTIVE MEDIA").style(|s| {
+        s.font_family(theme().font.mono_sm.family)
+            .font_size(11.0)
+            .color(theme().color.text_secondary)
+            .flex_grow(1.0)
             .gap(8.0)
             .padding_horiz(12.0)
             .padding_vert(8.0)

@@ -10,7 +10,7 @@ use floem::reactive::{
     ReadSignal, RwSignal, SignalGet, SignalUpdate, SignalWith, create_effect, create_memo,
     create_rw_signal, provide_context,
 };
-use floem::views::{Decorators, dyn_container, h_stack, text, v_stack};
+use floem::views::{Decorators, dyn_container, v_stack};
 use floem::window::WindowConfig;
 use floem::{Application, IntoView};
 use tokio::sync::{mpsc::Sender, watch};
@@ -18,7 +18,8 @@ use tokio::sync::{mpsc::Sender, watch};
 use crate::exec::UiEvent;
 use crate::model::{ExecutionState, Playhead, WorkspaceState};
 use crate::theme::{Theme, global_stylesheet, load_theme, theme};
-use crate::ui::{cuelist, detail, media, panel::PanelSystem, toolbar};
+use crate::ui::panel::PanelSystemBuilder;
+use crate::ui::{cuelist, detail, media, panel::PanelSystem, status_bar, toolbar};
 
 /// The Floem application and its UI-side execution-state channel.
 pub struct App {
@@ -176,31 +177,26 @@ fn app_view(
         });
     }
 
-    let panels = PanelSystem::new();
-    let active = panels.active();
-    let visible = panels.visibility();
-
-    let toolbar = toolbar::view(
-        cuelist_memo,
-        active_cue,
-        selected,
-        search,
-        active,
-        visible,
-        events_tx,
-    );
     let cuelist_view = cuelist::view(cuelist_memo, selected, active_cue, search);
-    let media = media::view(visible);
+
+    let media = media::view();
     let detail = detail::view(selected, cuelist_memo);
 
-    let panels = panels
+    let panel_system = PanelSystem::new();
+
+    let toolbar = toolbar::view(cuelist_memo, active_cue, selected, search, events_tx);
+
+    let panels = panel_system
+        .builder()
         .with_main(cuelist_view)
         .with_bottom(detail)
         .with_right(media)
         .build()
         .into_view();
 
-    v_stack((toolbar.into_any(), panels, status_bar().into_any()))
+    let status_bar = status_bar::view(panel_system);
+
+    v_stack((toolbar.into_any(), panels, status_bar.into_any()))
         .style(|s| {
             s.flex_col()
                 .width_full()
@@ -208,30 +204,4 @@ fn app_view(
                 .background(theme().color.bg_app)
         })
         .style(global_stylesheet)
-}
-
-fn status_bar() -> impl IntoView {
-    let left = text("STATUS: Connected (ASIO: Focusrite USB)").style(|s| {
-        s.color(theme().color.status_active)
-            .font_size(11.0)
-            .font_family(theme().font.mono_sm.family.clone())
-    });
-    let right = text("CPU: 4%   DSP: 12%").style(|s| {
-        s.color(theme().color.text_secondary)
-            .font_size(11.0)
-            .font_family(theme().font.mono_sm.family.clone())
-    });
-    let spacer = text("").style(|s| s.flex_grow(1.0));
-
-    v_stack((h_stack((left, spacer, right)).style(|s| {
-        s.items_center()
-            .gap(10.0)
-            .padding_horiz(12.0)
-            .padding_vert(4.0)
-            .background(theme().color.bg_surface)
-            .border_top(1.0)
-            .border_color(theme().color.border_subtle)
-            .height(24.0)
-    }),))
-    .style(|s| s.width_full())
 }
