@@ -11,7 +11,7 @@ use floem::unit::{Pct, UnitExt};
 use floem::views::{Decorators, h_stack, label, list, slider, text, v_stack};
 
 use crate::model::sample_active_media;
-use crate::theme::*;
+use crate::style::*;
 
 pub fn view() -> impl IntoView {
     let names = sample_active_media();

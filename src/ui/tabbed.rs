@@ -28,7 +28,7 @@ use floem::views::{
 };
 use floem::{AnyView, IntoView};
 
-use crate::theme::*;
+use crate::style::*;
 
 /// A single tab: a stable name paired with a factory that (re)builds its view
 /// each time the tab becomes active.

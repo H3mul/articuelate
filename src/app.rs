@@ -17,8 +17,7 @@ use tokio::sync::{mpsc::Sender, watch};
 
 use crate::exec::UiEvent;
 use crate::model::{ExecutionState, Playhead, WorkspaceState};
-use crate::theme::{Theme, global_stylesheet, load_theme, theme};
-use crate::ui::panel::PanelSystemBuilder;
+use crate::style::{Theme, global_stylesheet, load_theme, theme};
 use crate::ui::{cuelist, detail, media, panel::PanelSystem, status_bar, toolbar};
 
 /// The Floem application and its UI-side execution-state channel.

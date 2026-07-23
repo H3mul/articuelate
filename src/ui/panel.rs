@@ -24,7 +24,7 @@ use floem::taffy::Display;
 use floem::views::{Decorators, button, container, empty, h_stack, scroll, v_stack};
 use floem::{AnyView, IntoView, View};
 
-use crate::theme::*;
+use crate::style::*;
 
 /// Where a registered window lives in the workspace.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -201,10 +201,12 @@ impl PanelSystemBuilder {
 
 impl PanelSystem {
     /// Shared visibility signal so a toolbar can toggle panels.
+    #[allow(dead_code)]
     pub fn visibility(&self) -> RwSignal<PanelFlags> {
         self.visible
     }
 
+    #[allow(dead_code)]
     pub fn active(&self) -> RwSignal<PanelFlags> {
         self.active
     }

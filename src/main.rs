@@ -6,7 +6,7 @@
 mod app;
 mod exec;
 mod model;
-mod theme;
+mod style;
 mod ui;
 
 use std::sync::Arc;
@@ -42,7 +42,7 @@ fn main() {
 
     tokio_handle.spawn(exec_engine.run());
     tokio_handle.spawn(exec_state_forward);
-    tokio_handle.spawn(crate::theme::watch_theme_async(theme_reload_tx));
+    tokio_handle.spawn(crate::style::watch_theme_async(theme_reload_tx));
 
     app.run();
 }

@@ -5,12 +5,12 @@ use floem::{
 use lucide_floem::Icon;
 
 use crate::{
-    theme::theme,
+    style::{style::StatusBarButton, theme},
     ui::panel::{PanelLocation, PanelSystem},
 };
 
 pub fn view(panel_system: PanelSystem) -> impl IntoView {
-    let left = text("STATUS: Connected (ASIO: Focusrite USB)").style(|s| {
+    let _left = text("STATUS: Connected (ASIO: Focusrite USB)").style(|s| {
         s.color(theme().color.status_active)
             .font_size(11.0)
             .font_family(theme().font.mono_sm.family)
@@ -22,9 +22,15 @@ pub fn view(panel_system: PanelSystem) -> impl IntoView {
     });
     let spacer = text("").style(|s| s.flex_grow(1.0));
 
-    let bottom_toggle = panel_system.panel_toggle_button(Icon::PanelBottom, PanelLocation::Bottom);
-    let left_toggle = panel_system.panel_toggle_button(Icon::PanelLeft, PanelLocation::Left);
-    let right_toggle = panel_system.panel_toggle_button(Icon::PanelRight, PanelLocation::Right);
+    let bottom_toggle = panel_system
+        .panel_toggle_button(Icon::PanelBottom, PanelLocation::Bottom)
+        .class(StatusBarButton);
+    let left_toggle = panel_system
+        .panel_toggle_button(Icon::PanelLeft, PanelLocation::Left)
+        .class(StatusBarButton);
+    let right_toggle = panel_system
+        .panel_toggle_button(Icon::PanelRight, PanelLocation::Right)
+        .class(StatusBarButton);
 
     let panel_toggles = h_stack((bottom_toggle, left_toggle, right_toggle));
 

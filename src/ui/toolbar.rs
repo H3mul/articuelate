@@ -15,7 +15,7 @@ use std::sync::Arc;
 
 use crate::exec::UiEvent;
 use crate::model::{CueId, Cuelist};
-use crate::theme::*;
+use crate::style::*;
 
 pub fn view(
     cuelist: impl SignalGet<Arc<Cuelist>> + SignalWith<Arc<Cuelist>> + Copy + 'static,

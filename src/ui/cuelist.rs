@@ -16,7 +16,7 @@ use floem::views::{
 use std::sync::Arc;
 
 use crate::model::{Cue, CueId, Cuelist, Trigger, TriggerMode};
-use crate::theme::*;
+use crate::style::*;
 
 pub fn view(
     cuelist: impl SignalGet<Arc<Cuelist>> + SignalWith<Arc<Cuelist>> + Copy + 'static,

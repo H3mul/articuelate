@@ -16,7 +16,7 @@ use floem::views::{Decorators, button, h_stack, label, slider, text, text_input,
 use std::sync::Arc;
 
 use crate::model::{CueId, Cuelist};
-use crate::theme::*;
+use crate::style::*;
 use crate::ui::tabbed;
 
 pub fn view(
