@@ -12,8 +12,8 @@ use floem::views::{Decorators, button, h_stack, label, list, slider, text, v_sta
 use lucide_floem::Icon;
 
 use crate::model::sample_active_media;
-use crate::panel::PanelFlags;
 use crate::theme::*;
+use crate::ui::panel::PanelFlags;
 
 pub fn view(visible: RwSignal<PanelFlags>) -> impl IntoView {
     let names = sample_active_media();

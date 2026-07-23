@@ -4,15 +4,10 @@
 //! thread boundary. Floem-specific setup lives in `app.rs`.
 
 mod app;
-mod cuelist;
-mod detail;
 mod exec;
-mod media;
 mod model;
-mod panel;
-mod tabbed;
 mod theme;
-mod toolbar;
+mod ui;
 
 use std::sync::Arc;
 

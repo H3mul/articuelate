@@ -6,7 +6,6 @@ use std::sync::Arc;
 use arc_swap::ArcSwap;
 use crossbeam_channel::Receiver;
 use floem::ext_event::create_signal_from_channel;
-use floem::keyboard::Key;
 use floem::reactive::{
     ReadSignal, RwSignal, SignalGet, SignalUpdate, SignalWith, create_effect, create_memo,
     create_rw_signal, provide_context,
@@ -16,15 +15,10 @@ use floem::window::WindowConfig;
 use floem::{Application, IntoView};
 use tokio::sync::{mpsc::Sender, watch};
 
-use crate::cuelist;
-use crate::detail;
 use crate::exec::UiEvent;
-use crate::media;
 use crate::model::{ExecutionState, Playhead, WorkspaceState};
-use crate::panel::PanelSystem;
-
 use crate::theme::{Theme, global_stylesheet, load_theme, theme};
-use crate::toolbar;
+use crate::ui::{cuelist, detail, media, panel::PanelSystem, toolbar};
 
 /// The Floem application and its UI-side execution-state channel.
 pub struct App {
@@ -119,6 +113,7 @@ impl App {
                         move || theme_gen.get(),
                         move |_| app_view(ws.clone(), exec_state_signal_r, tx.clone()),
                     )
+                    .style(|s| s.size_full().min_size(0.0, 0.0))
                 },
                 Some(
                     WindowConfig::default()
@@ -204,12 +199,6 @@ fn app_view(
         .build(toolbar, status_bar())
         .style(global_stylesheet)
         .into_view()
-        .keyboard_navigable()
-        .on_key_down(
-            Key::Character("j".into()),
-            |m| m.control(),
-            move |_| visible.update(|v| v.bottom = !v.bottom),
-        )
 }
 
 fn status_bar() -> impl IntoView {

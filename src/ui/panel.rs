@@ -65,9 +65,9 @@ impl PanelSystem {
     pub fn new() -> Self {
         PanelSystem {
             sizes: create_rw_signal(PanelSizes {
-                left: 220.0,
-                right: 260.0,
-                bottom: 240.0,
+                left: theme().dim.min_panel_size,
+                right: theme().dim.min_panel_size,
+                bottom: theme().dim.min_panel_size,
             }),
             active: create_rw_signal(PanelFlags::default()),
             visible: create_rw_signal(PanelFlags::default()),
@@ -146,13 +146,17 @@ impl PanelSystem {
             .main
             .expect("PanelSystem::build requires a Main window");
 
-        let main_view = container(scroll(main.into_view())).style(|s| {
-            s.flex_grow(1.0)
-                .flex_shrink(1.0)
-                .flex_basis(0.0)
-                .min_size(0.0, 0.0)
-                .size_full()
-        });
+        let main_view = container(scroll(main.into_view()).style(|s| s.width_full().height_full()))
+            .style(|s| {
+                // A definite zero width makes this a genuine remaining-space flex item.
+                // The submitted view must not contribute its intrinsic width to layout.
+                s.width(0.0)
+                    .height_full()
+                    .flex_grow(1.0)
+                    .flex_shrink(1.0)
+                    .flex_basis(0.0)
+                    .min_size(0.0, 0.0)
+            });
 
         let left_view = self.left.map_or_else(
             || empty().into_any(),
@@ -301,22 +305,24 @@ fn resize_handle(
                         let new_size =
                             current_sizes.left - pointer_event.pos.x + drag_start_point.x;
                         new_size.clamp(
-                            140.0,
-                            (available_size.width - current_sizes.right).max(140.0),
+                            theme().dim.min_panel_size,
+                            (available_size.width - current_sizes.right)
+                                .max(theme().dim.min_panel_size),
                         )
                     }
                     PanelLocation::Right => {
                         let new_size =
                             current_sizes.right - pointer_event.pos.x + drag_start_point.x;
                         new_size.clamp(
-                            180.0,
-                            (available_size.width - current_sizes.left).max(180.0),
+                            theme().dim.min_panel_size,
+                            (available_size.width - current_sizes.left)
+                                .max(theme().dim.min_panel_size),
                         )
                     }
                     PanelLocation::Bottom => {
                         let new_size =
                             current_sizes.bottom - pointer_event.pos.y + drag_start_point.y;
-                        new_size.max(120.0)
+                        new_size.max(theme().dim.min_panel_size)
                     }
                 };
                 sizes.update(|s| match location {

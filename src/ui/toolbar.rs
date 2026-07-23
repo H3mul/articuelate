@@ -16,8 +16,8 @@ use std::sync::Arc;
 
 use crate::exec::UiEvent;
 use crate::model::{CueId, Cuelist};
-use crate::panel::PanelFlags;
 use crate::theme::*;
+use crate::ui::panel::PanelFlags;
 
 /// Which optional panel a toggle controls.
 #[derive(Clone, Copy)]

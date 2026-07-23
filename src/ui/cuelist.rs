@@ -18,9 +18,6 @@ use std::sync::Arc;
 use crate::model::{Cue, CueId, Cuelist, Trigger, TriggerMode};
 use crate::theme::*;
 
-/// Fixed row height (px) for the virtualized list.
-const ROW_H: f64 = 82.0;
-
 pub fn view(
     cuelist: impl SignalGet<Arc<Cuelist>> + SignalWith<Arc<Cuelist>> + Copy + 'static,
     selected: RwSignal<Option<CueId>>,
@@ -41,7 +38,7 @@ pub fn view(
 
     let list = virtual_list(
         VirtualDirection::Vertical,
-        VirtualItemSize::Fixed(Box::new(|| ROW_H)),
+        VirtualItemSize::Fixed(Box::new(|| theme().dim.height_cue_row)),
         move || filtered.get(),
         move |(id, _)| *id,
         move |(id, cue)| cue_row(id, cue, selected, active_cue),
@@ -55,8 +52,6 @@ pub fn view(
             .padding_horiz(12.0)
             .padding_vert(8.0)
             .background(theme().color.bg_surface)
-            .border_bottom(1.0)
-            .border_color(theme().color.border_subtle)
             .width_full()
     });
 
@@ -69,8 +64,6 @@ pub fn view(
             .flex_grow(1.0)
             .min_width(0.0)
             .background(theme().color.bg_app)
-            .border_right(1.0)
-            .border_color(theme().color.border_subtle)
     })
 }
 
@@ -129,7 +122,7 @@ fn cue_row(
     container(header_line.style(|s| s.flex_col().gap(4.0)))
         .style(move |s| {
             s.width_full()
-                .height(ROW_H)
+                .height(theme().dim.height_cue_row)
                 .padding_horiz(12.0)
                 .padding_vert(8.0)
                 .background(if is_selected() {

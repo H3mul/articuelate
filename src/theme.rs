@@ -86,8 +86,8 @@ fn hex_to_color(s: &str) -> Result<Color, String> {
 #[allow(dead_code)]
 pub struct FontStyle {
     pub family: String,
-    pub size: f32,
-    pub line_height: f32,
+    pub size: f64,
+    pub line_height: f64,
     #[serde(deserialize_with = "de_weight")]
     pub weight: Weight,
 }
@@ -135,12 +135,13 @@ pub struct FontTheme {
 #[derive(Debug, Clone, Deserialize)]
 #[allow(dead_code)]
 pub struct DimTheme {
-    pub space_xs: f32,
-    pub space_sm: f32,
-    pub space_md: f32,
-    pub space_lg: f32,
-    pub space_xl: f32,
-    pub height_cue_row: f32,
+    pub space_xs: f64,
+    pub space_sm: f64,
+    pub space_md: f64,
+    pub space_lg: f64,
+    pub space_xl: f64,
+    pub height_cue_row: f64,
+    pub min_panel_size: f64,
 }
 
 /// Top-level theme, containing one sub-struct per toml section.

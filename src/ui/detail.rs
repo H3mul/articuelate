@@ -16,8 +16,8 @@ use floem::views::{Decorators, button, h_stack, label, slider, text, text_input,
 use std::sync::Arc;
 
 use crate::model::{CueId, Cuelist};
-use crate::tabbed;
 use crate::theme::*;
+use crate::ui::tabbed;
 
 pub fn view(
     selected: RwSignal<Option<CueId>>,
