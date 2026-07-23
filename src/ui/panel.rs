@@ -112,11 +112,7 @@ impl PanelSystem {
 
     /// Assemble the full workspace view: toolbar on top, panels in the middle,
     /// status bar at the bottom.
-    pub fn build(
-        self,
-        toolbar: impl IntoView + 'static,
-        status_bar: impl IntoView + 'static,
-    ) -> impl IntoView {
+    pub fn build(self) -> impl IntoView {
         let sizes = self.sizes;
         let visible = self.visible;
         let available_size = self.available_size;
@@ -181,7 +177,7 @@ impl PanelSystem {
                 .width_full()
         });
 
-        let workspace_area = v_stack((center_row, bottom_view))
+        v_stack((center_row, bottom_view))
             .style(|s| {
                 s.flex_col()
                     .flex_grow(1.0)
@@ -190,14 +186,7 @@ impl PanelSystem {
                     .height_full()
                     .width_full()
             })
-            .on_resize(move |rect| available_size.set(rect.size()));
-
-        v_stack((toolbar.into_any(), workspace_area, status_bar.into_any())).style(|s| {
-            s.flex_col()
-                .width_full()
-                .height_full()
-                .background(theme().color.bg_app)
-        })
+            .on_resize(move |rect| available_size.set(rect.size()))
     }
 }
 

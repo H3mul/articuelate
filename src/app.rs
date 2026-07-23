@@ -193,13 +193,21 @@ fn app_view(
     let media = media::view(visible);
     let detail = detail::view(selected, cuelist_memo);
 
-    panels
+    let panels = panels
         .with_main(cuelist_view)
         .with_bottom(detail)
         .with_right(media)
-        .build(toolbar, status_bar())
+        .build()
+        .into_view();
+
+    v_stack((toolbar.into_any(), panels, status_bar().into_any()))
+        .style(|s| {
+            s.flex_col()
+                .width_full()
+                .height_full()
+                .background(theme().color.bg_app)
+        })
         .style(global_stylesheet)
-        .into_view()
 }
 
 fn status_bar() -> impl IntoView {
