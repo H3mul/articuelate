@@ -23,30 +23,26 @@ fn main() {
     let workspace = Arc::new(ArcSwap::from_pointee(WorkspaceState::sample()));
 
     let (exec_engine, exec_state_rx, events_tx) = ExecutionEngine::init(workspace.clone());
-    let (app, state_forwarder, theme_reload_tx) = App::init(workspace, exec_state_rx, events_tx);
+    let (app, exec_state_forward, theme_reload_tx) = App::init(workspace, exec_state_rx, events_tx);
 
-    let (tokio_tx, tokio_rx) = std::sync::mpsc::channel();
+    let (_shutdown_tx, shutdown_rx) = tokio::sync::oneshot::channel::<()>();
+
+    let rt = tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()
+        .expect("failed to build shared tokio runtime");
+
+    let tokio_handle = rt.handle().clone();
+
     std::thread::spawn(move || {
-        let rt = tokio::runtime::Builder::new_multi_thread()
-            .enable_all()
-            .build()
-            .expect("failed to build shared tokio runtime");
-
-        rt.block_on(async move {
-            let handle = tokio::runtime::Handle::current();
-            let _ = tokio_tx.send(handle);
-
-            exec_engine.run().await;
+        rt.block_on(async {
+            let _ = shutdown_rx.await;
         });
     });
 
-    let tokio_handle = tokio_rx.recv().expect("Tokio runtime failed to start");
-    tokio_handle.spawn(state_forwarder);
-
-    // Wire up the theme file watcher on the tokio runtime so edits to
-    // themes/*.toml trigger live reloads in the UI.
-    let theme_watcher = crate::theme::watch_theme_async(theme_reload_tx);
-    tokio_handle.spawn(theme_watcher);
+    tokio_handle.spawn(exec_engine.run());
+    tokio_handle.spawn(exec_state_forward);
+    tokio_handle.spawn(crate::theme::watch_theme_async(theme_reload_tx));
 
     app.run();
 }

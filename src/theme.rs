@@ -171,23 +171,54 @@ pub fn theme() -> Theme {
     signal.get_untracked()
 }
 
-/// Grab the first `.toml` file in `themes/` and parse it as the theme.
-/// Falls back to the baked-in `dark.toml` so the app always boots.
+/// Read all `.toml` files in `themes/`, sort them alphabetically, and merge
+/// them in order (later files override earlier ones). Falls back to the baked-in
+/// `dark.toml` when the directory is missing or empty.
 pub fn load_theme() -> Theme {
-    let first = std::fs::read_dir("themes").ok().and_then(|entries| {
-        entries
-            .filter_map(Result::ok)
+    let mut paths: Vec<_> = match std::fs::read_dir("themes") {
+        Ok(entries) => entries
+            .filter_map(|e| e.ok())
             .map(|e| e.path())
-            .find(|p| p.extension().map_or(false, |e| e == "toml"))
-    });
+            .filter(|p| p.extension().map_or(false, |e| e == "toml"))
+            .collect(),
+        Err(_) => Vec::new(),
+    };
 
-    match first {
-        Some(path) => {
-            let raw = std::fs::read_to_string(&path)
-                .unwrap_or_else(|e| panic!("failed to read theme file {:?}: {e}", path));
-            parse_theme(&raw)
+    if paths.is_empty() {
+        return parse_theme(include_str!("../themes/dark.toml"));
+    }
+
+    paths.sort();
+
+    let mut merged = toml::Table::new();
+    for path in &paths {
+        let raw = std::fs::read_to_string(path)
+            .unwrap_or_else(|e| panic!("failed to read theme file {:?}: {e}", path));
+        let table: toml::Table = toml::from_str(&raw)
+            .unwrap_or_else(|e| panic!("failed to parse theme file {:?}: {e}", path));
+        merge_tables(&mut merged, &table);
+    }
+
+    let merged_str = toml::to_string(&merged).expect("failed to serialize merged theme table");
+    parse_theme(&merged_str)
+}
+
+/// Recursively merge `overlay` into `base`. Nested tables are merged
+/// recursively; all other values overwrite.
+fn merge_tables(base: &mut toml::Table, overlay: &toml::Table) {
+    for (key, value) in overlay {
+        match value {
+            toml::Value::Table(overlay_table) => {
+                if let Some(toml::Value::Table(base_table)) = base.get_mut(key) {
+                    merge_tables(base_table, overlay_table);
+                } else {
+                    base.insert(key.clone(), toml::Value::Table(overlay_table.clone()));
+                }
+            }
+            _ => {
+                base.insert(key.clone(), value.clone());
+            }
         }
-        None => parse_theme(include_str!("../themes/dark.toml")),
     }
 }
 
@@ -219,7 +250,6 @@ pub fn watch_theme_async(tx: Sender<Theme>) -> std::pin::Pin<Box<dyn Future<Outp
                     .iter()
                     .any(|p| p.extension().map_or(false, |e| e == "toml"));
                 if is_toml {
-                    eprintln!("notify event: {:?} {:?}", event.kind, event.paths);
                     let _ = async_tx.try_send(());
                 }
             }
