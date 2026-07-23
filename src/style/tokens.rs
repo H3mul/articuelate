@@ -74,11 +74,14 @@ pub struct ColorStyle {
     pub bg_surface_odd: Color,
     pub bg_hover: Color,
     pub bg_overlay: Color,
+
     pub border_subtle: Color,
     pub border_focus: Color,
+
     pub text_primary: Color,
     pub text_secondary: Color,
     pub text_disabled: Color,
+
     pub status_active: Color,
     pub status_status_running: Color,
     pub status_wait: Color,
@@ -116,6 +119,13 @@ pub struct DimStyle {
     pub space_md: f64,
     pub space_lg: f64,
     pub space_xl: f64,
+
     pub height_cue_row: f64,
     pub min_panel_size: f64,
+    pub border_size: f64,
+
+    pub status_icon_size: f64,
+    pub status_bar_height: f64,
+
+    pub radius_sm: f64,
 }

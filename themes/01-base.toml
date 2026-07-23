@@ -30,23 +30,42 @@ weight = "regular"
 size = 13.0
 line_height = 18.0
 
+[dim]
+
+space_xs = 4.0
+space_sm = 8.0
+space_md = 12.0
+space_lg = 16.0
+space_xl = 24.0
+
+height_cue_row = 24.0
+min_panel_size = 225.0
+border_size = 1.0
+
+status_bar_height = 24.0
+status_icon_size = 14.0
+
+radius_sm = 3.0
+
 [color]
 
-# Deepest base canvas background (window background).
-bg_app = "#181926"
-# Primary pane panels (Cuelist background, Inspector background).
-bg_surface = "#1e2030"
-# Primary pane panel alternation (Cuelist background rows)
-bg_surface_odd = "#24273a"
-# Hover states, active tab backgrounds, secondary buttons.
-bg_hover = "#363a4f"
-# Input controls, table headers, inactive rows, cards.
-bg_overlay = "#494d64"
+bg_app              = "#181926"  # Window canvas & deepest inset wells
+bg_surface          = "#1E2030"  # Primary panels (Cuelist, Inspector background)
+bg_surface_odd      = "#24273A"  # Striped table rows / secondary surface contrast
 
-# Standard divider for table rows and pane borders.
-border_subtle = "#6e738d"
-# Focused input borders, active tab indicators.
-border_focus = "#8087a2"
+bg_hover            = "#363a4f" # Hover states, active tab backgrounds, secondary buttons.
+bg_overlay          = "#494d64" # Input controls, table headers, inactive rows, cards.
+
+# --- Inset Interactable Foundations ("Punch-Down") ---
+element_bg            = "#141520"  # Standard button/input default background (Darker than panel!)
+element_border        = "#2B2D42"  # Subtle 1px frame to hold shape against bg_surface
+element_bg_hover      = "#282A40"  # Hover: Lifts toward panel lightness
+element_bg_active     = "#0E0F18"  # Active/Pressed: Insets deeper into darks
+
+# --- Accent & Status Focus Overlay ---
+border_focus          = "#8087A2"  # Focused element ring
+accent_active         = "#00A3FF"  # Playhead / Selection highlight
+border_subtle         = "#6e738d" # Standard divider for table rows and pane borders.
 
 # High-contrast body, cue titles, times. Primary legibility.
 text_primary = "#cad3f5"
@@ -65,12 +84,3 @@ status_wait = "#eed49f"
 status_error = "#ee99a0"
 # Armed / Standby State (Purple).
 status_standby = "#c6a0f6"
-
-[dim]
-space_xs = 4.0
-space_sm = 8.0
-space_md = 12.0
-space_lg = 16.0
-space_xl = 24.0
-height_cue_row = 24.0
-min_panel_size = 225.0

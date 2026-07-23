@@ -3,6 +3,7 @@
 use floem::peniko::Color;
 use floem::style::Style;
 use floem::style_class;
+use floem::views::ButtonClass;
 use floem::views::scroll::{ScrollClass, ScrollCustomStyle};
 
 use crate::style::theme::theme;
@@ -19,10 +20,23 @@ pub fn global_stylesheet(s: Style) -> Style {
             .apply_custom(ScrollCustomStyle::new().handle_thickness(theme().dim.space_xs))
     })
     .class(StatusBarButton, |s| {
-        s.background(Color::TRANSPARENT)
-            .color(theme().color.text_primary)
-            .border(0.0)
-            .font_size(theme().font.body.size)
-            .hover(|s| s.background(theme().color.border_subtle))
+        s.color(theme().color.text_primary)
+            .background(Color::TRANSPARENT)
+            .border_color(Color::TRANSPARENT)
+            .font_size(theme().dim.status_icon_size)
+            .border_radius(theme().dim.radius_sm)
+            .padding_horiz(theme().dim.space_xs)
     })
+    .class(ButtonClass, |s| apply_interactable_base_styles(s))
+}
+
+fn apply_interactable_base_styles(s: Style) -> Style {
+    s.background(theme().color.bg_overlay)
+        .hover(|s| s.background(theme().color.bg_hover))
+        .active(|s| s.background(Color::TRANSPARENT))
+        .focus(|s| {
+            s.hover(|s| s.background(theme().color.bg_hover))
+                .active(|s| s.background(Color::TRANSPARENT))
+                .active(|s| s.hover(|s| s.background(theme().color.bg_hover)))
+        })
 }

@@ -228,6 +228,14 @@ impl PanelSystem {
             })
         };
 
+        let button_active = move || {
+            visible.with(|v| match which {
+                PanelLocation::Left => v.left,
+                PanelLocation::Right => v.right,
+                PanelLocation::Bottom => v.bottom,
+            })
+        };
+
         button(child_view)
             .action(move || {
                 visible.update(|v| match which {
@@ -236,7 +244,10 @@ impl PanelSystem {
                     PanelLocation::Bottom => v.bottom = !v.bottom,
                 })
             })
-            .style(move |s| s.apply_if(hide(), |s| s.display(Display::None)))
+            .style(move |s| {
+                s.apply_if(hide(), |s| s.display(Display::None))
+                    .apply_if(button_active(), |s| s.color(theme().color.status_active))
+            })
     }
 }
 

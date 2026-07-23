@@ -15,7 +15,7 @@ pub fn view(panel_system: PanelSystem) -> impl IntoView {
             .font_size(11.0)
             .font_family(theme().font.mono_sm.family)
     });
-    let right = text("CPU: 4%   DSP: 12%").style(|s| {
+    let _right = text("CPU: 4%   DSP: 12%").style(|s| {
         s.color(theme().color.text_secondary)
             .font_size(11.0)
             .font_family(theme().font.mono_sm.family)
@@ -34,15 +34,14 @@ pub fn view(panel_system: PanelSystem) -> impl IntoView {
 
     let panel_toggles = h_stack((bottom_toggle, left_toggle, right_toggle));
 
-    v_stack((h_stack((panel_toggles, spacer, right)).style(|s| {
+    v_stack((h_stack((spacer, panel_toggles)).style(|s| {
         s.items_center()
-            .gap(10.0)
-            .padding_horiz(12.0)
-            .padding_vert(4.0)
-            .background(theme().color.bg_surface)
-            .border_top(1.0)
+            .gap(theme().dim.space_xs / 2.0)
+            .padding_horiz(theme().dim.space_md)
+            .background(theme().color.bg_app)
+            .border_top(theme().dim.border_size)
             .border_color(theme().color.border_subtle)
-            .height(24.0)
+            .height(theme().dim.status_bar_height)
     }),))
     .style(|s| s.width_full())
 }
