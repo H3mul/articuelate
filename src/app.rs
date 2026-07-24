@@ -13,8 +13,10 @@ use floem::reactive::{
 use floem::views::{Decorators, dyn_container, v_stack};
 use floem::window::WindowConfig;
 use floem::{Application, IntoView};
+use ringbuf::HeapCons;
 use tokio::sync::{mpsc::Sender, watch};
 
+use crate::audio::AudioTelemetry;
 use crate::exec::UiEvent;
 use crate::model::{ExecutionState, Playhead, WorkspaceState};
 use crate::style::{Theme, global_stylesheet, load_theme, theme};
@@ -26,6 +28,7 @@ pub struct App {
     workspace: Arc<ArcSwap<WorkspaceState>>,
     exec_state_rx: Receiver<Arc<ExecutionState>>,
     events_tx: Sender<UiEvent>,
+    telemetry: Option<HeapCons<AudioTelemetry>>,
     theme_signal: RwSignal<Theme>,
     theme_rx: crossbeam_channel::Receiver<Theme>,
 }
@@ -39,6 +42,7 @@ impl App {
         workspace: Arc<ArcSwap<WorkspaceState>>,
         exec_state_rx: watch::Receiver<Arc<ExecutionState>>,
         events_tx: Sender<UiEvent>,
+        telemetry: HeapCons<AudioTelemetry>,
     ) -> (
         Self,
         impl Future<Output = ()> + Send + 'static,
@@ -66,6 +70,7 @@ impl App {
                 workspace,
                 exec_state_rx: ui_exec_state_rx,
                 events_tx,
+                telemetry: Some(telemetry),
                 theme_signal,
                 theme_rx,
             },
@@ -79,6 +84,7 @@ impl App {
             workspace,
             exec_state_rx,
             events_tx,
+            telemetry,
             theme_signal,
             theme_rx,
         } = self;
@@ -108,6 +114,7 @@ impl App {
                         }
                     });
 
+                    let _media = telemetry.map(media::view);
                     let ws = workspace.clone();
                     let tx = events_tx.clone();
                     dyn_container(
@@ -178,7 +185,6 @@ fn app_view(
 
     let cuelist_view = cuelist::view(cuelist_memo, selected, active_cue);
 
-    let _media = media::view();
     let _detail = detail::view(selected, cuelist_memo);
 
     let panel_system = PanelSystem::new();

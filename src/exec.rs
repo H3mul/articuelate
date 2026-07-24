@@ -25,7 +25,8 @@ use std::sync::Arc;
 
 use tokio::sync::{mpsc, watch};
 
-use crate::model::{ExecutionState, Playhead, WorkspaceState};
+use crate::audio::{AudioEvent, DSPCommand};
+use crate::model::{CueKind, ExecutionState, Playhead, WorkspaceState};
 
 /// Discrete intents pushed from the UI onto the event bus.
 ///
@@ -39,6 +40,8 @@ pub enum UiEvent {
 
 pub struct ExecutionEngine {
     rx_events: mpsc::Receiver<UiEvent>,
+    rx_audio: mpsc::Receiver<AudioEvent>,
+    tx_dsp: mpsc::Sender<DSPCommand>,
     tx_state: watch::Sender<Arc<ExecutionState>>,
     workspace_state: Arc<ArcSwap<WorkspaceState>>,
     state: Arc<ExecutionState>,
@@ -47,6 +50,8 @@ pub struct ExecutionEngine {
 impl ExecutionEngine {
     pub fn init(
         workspace_state: Arc<ArcSwap<WorkspaceState>>,
+        tx_dsp: mpsc::Sender<DSPCommand>,
+        rx_audio: mpsc::Receiver<AudioEvent>,
     ) -> (
         Self,
         watch::Receiver<Arc<ExecutionState>>,
@@ -58,6 +63,8 @@ impl ExecutionEngine {
         (
             Self {
                 rx_events: events_rx,
+                rx_audio: rx_audio,
+                tx_dsp: tx_dsp,
                 tx_state: state_tx,
                 workspace_state,
                 state,
@@ -87,26 +94,35 @@ impl ExecutionEngine {
     }
 
     pub async fn run(mut self) {
-        while let Some(event) = self.rx_events.recv().await {
-            match event {
-                UiEvent::Go => {
-                    let cuelist = &self.workspace_state().cuelist;
-
-                    Arc::make_mut(&mut self.state).playhead = match self.state.playhead {
-                        Playhead::Stopped => cuelist
-                            .iter()
-                            .next()
-                            .map(|cue| Playhead::Playing(cue.id))
-                            .unwrap_or(Playhead::Stopped),
-                        Playhead::Playing(active) => cuelist
-                            .iter_after(active)
-                            .and_then(|mut it| it.next())
-                            .map(|cue| Playhead::Playing(cue.id))
-                            .unwrap_or(Playhead::Stopped),
+        loop {
+            tokio::select! {
+                event = self.rx_events.recv() => {
+                    let Some(UiEvent::Go) = event else { break };
+                    let cuelist = self.workspace_state().cuelist.clone();
+                    let next = match self.state.playhead {
+                        Playhead::Stopped => cuelist.iter().next().cloned(),
+                        Playhead::Playing(active) => cuelist.iter_after(active).and_then(|mut it| it.next().cloned()),
                     };
-
-                    // Commit the new state as soon as we're done processing.
-                    self.commit_exec_state();
+                    if let Some(cue) = next {
+                        let CueKind::Media { file_path, volume_db, looping, .. } = &cue.kind;
+                        {
+                            let _ = self.tx_dsp.send(DSPCommand::Play {
+                                cue_id: cue.id,
+                                file_path: file_path.clone(),
+                                volume_db: *volume_db,
+                                looping: *looping,
+                            }).await;
+                        }
+                        Arc::make_mut(&mut self.state).playhead = Playhead::Playing(cue.id);
+                        self.commit_exec_state();
+                    }
+                }
+                event = self.rx_audio.recv() => {
+                    let Some(AudioEvent::PlaybackFinished { cue_id }) = event else { break };
+                    if self.state.playhead == Playhead::Playing(cue_id) {
+                        Arc::make_mut(&mut self.state).playhead = Playhead::Stopped;
+                        self.commit_exec_state();
+                    }
                 }
             }
         }

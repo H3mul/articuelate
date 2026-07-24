@@ -4,6 +4,7 @@
 //! thread boundary. Floem-specific setup lives in `app.rs`.
 
 mod app;
+mod audio;
 mod exec;
 mod model;
 mod style;
@@ -14,6 +15,7 @@ use std::sync::Arc;
 use arc_swap::ArcSwap;
 
 use crate::app::App;
+use crate::audio::AudioEngine;
 use crate::exec::ExecutionEngine;
 use crate::model::WorkspaceState;
 
@@ -22,8 +24,11 @@ fn main() {
     // TODO: remove after save state is implemented.
     let workspace = Arc::new(ArcSwap::from_pointee(WorkspaceState::sample()));
 
-    let (exec_engine, exec_state_rx, events_tx) = ExecutionEngine::init(workspace.clone());
-    let (app, exec_state_forward, theme_reload_tx) = App::init(workspace, exec_state_rx, events_tx);
+    let (_audio_engine, dsp_tx, audio_events_rx, telemetry) = AudioEngine::init();
+    let (exec_engine, exec_state_rx, events_tx) =
+        ExecutionEngine::init(workspace.clone(), dsp_tx, audio_events_rx);
+    let (app, exec_state_forward, theme_reload_tx) =
+        App::init(workspace, exec_state_rx, events_tx, telemetry);
 
     let (_shutdown_tx, shutdown_rx) = tokio::sync::oneshot::channel::<()>();
 

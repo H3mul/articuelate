@@ -6,6 +6,10 @@
 //! which is exactly what an audio app needs for cheap, smooth metering.
 
 use floem::IntoView;
+use ringbuf::HeapCons;
+use ringbuf::traits::Consumer;
+
+use crate::audio::AudioTelemetry;
 use floem::reactive::{RwSignal, SignalGet, create_get_update, create_rw_signal};
 use floem::unit::{Pct, UnitExt};
 use floem::views::{Decorators, h_stack, label, list, slider, text, v_stack};
@@ -13,7 +17,10 @@ use floem::views::{Decorators, h_stack, label, list, slider, text, v_stack};
 use crate::model::sample_active_media;
 use crate::style::*;
 
-pub fn view() -> impl IntoView {
+pub fn view(mut telemetry: HeapCons<AudioTelemetry>) -> impl IntoView {
+    // The consumer is owned by the frontend boundary. A future 60 Hz Floem
+    // timer can drain it here without involving the execution engine.
+    while telemetry.try_pop().is_some() {}
     let names = sample_active_media();
     let n = names.len();
 

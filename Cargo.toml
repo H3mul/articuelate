@@ -10,7 +10,10 @@ floem = { version = "0.2", features = ["tokio"] }
 fastrand = "2"
 im = "15"
 lucide-floem = "0.2"
-tokio = { version = "1", features = ["rt", "rt-multi-thread", "sync", "time"] }
+tokio = { version = "1", features = ["macros", "rt", "rt-multi-thread", "sync", "time"] }
+cpal = "0.15"
+ringbuf = "0.4"
+rodio = "0.19"
 toml = "0.8"
 uuid = { version = "1.24.0", features = ["v7", "serde"] }
 serde = { version = "1.0.229", features = ["derive", "rc"] }
