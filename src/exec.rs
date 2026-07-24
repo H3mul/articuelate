@@ -154,10 +154,25 @@ impl ExecutionEngine {
                     }
                 }
                 event = rx_audio.recv() => {
-                    let Some(AudioEvent::PlaybackFinished { cue_id }) = event else { break };
-                    if self.state.playhead == Playhead::Playing(cue_id) {
-                        Arc::make_mut(&mut self.state).playhead = Playhead::Stopped;
-                        self.commit_exec_state();
+                    let Some(event) = event else { break };
+                    match event {
+                        AudioEvent::PlaybackFinished { cue_id } => {
+                            if self.state.playhead == Playhead::Playing(cue_id) {
+                                Arc::make_mut(&mut self.state).playhead = Playhead::Stopped;
+                                self.commit_exec_state();
+                            }
+                        }
+                        AudioEvent::DeviceLost { device_name, .. } => {
+                            // Keep the execution loop alive while the audio
+                            // router tears down the failed stream. If the
+                            // event identifies the lost device, retrying it is
+                            // harmless and lets the router perform a clean
+                            // context handoff; the UI can select another
+                            // device through UiEvent::SetAudioDevice.
+                            if let Some(device_name) = device_name {
+                                let _ = tx_dsp.send(DSPCommand::SetAudioDevice { device_name }).await;
+                            }
+                        }
                     }
                 }
             }

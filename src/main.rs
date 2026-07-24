@@ -27,6 +27,7 @@ fn main() {
     let mut execution = ExecutionEngine::new();
     execution.set_workspace_state(workspace.clone());
     execution.set_audio_engine(&audio_engine, audio_events);
+
     let (app, exec_state_forward, theme_reload_tx) = App::new(
         workspace,
         execution.state_receiver(),
