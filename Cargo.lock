@@ -142,6 +142,7 @@ name = "articuelate"
 version = "0.1.0"
 dependencies = [
  "arc-swap",
+ "async-trait",
  "cpal",
  "crossbeam-channel",
  "fastrand",
@@ -153,6 +154,7 @@ dependencies = [
  "rodio",
  "serde",
  "serde_with",
+ "thiserror 2.0.18",
  "tokio",
  "toml",
  "uuid",
@@ -172,6 +174,17 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0bb44936d800fea8f016d7f2311c6a4f97aebd5dc86f09906139ec848cf3a46f"
 dependencies = [
  "libloading",
+]
+
+[[package]]
+name = "async-trait"
+version = "0.1.91"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ae36dc4177970ef04fde5178d3e2429882def40e57a451f919c098f72baa6cec"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 3.0.1",
 ]
 
 [[package]]

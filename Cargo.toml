@@ -22,3 +22,5 @@ arc-swap = "1.9.2"
 crossbeam-channel = "0.5.16"
 notify = { version = "7", default-features = false, features = ["macos_kqueue"] }
 serde_with = "3.21.0"
+async-trait = "0.1"
+thiserror = "2"

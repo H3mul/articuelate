@@ -19,20 +19,18 @@ use crate::model::WorkspaceState;
 fn main() {
     let workspace = Arc::new(ArcSwap::from_pointee(WorkspaceState::sample()));
 
-    let mut audio_engine = AudioEngine::new();
-    let audio_events = audio_engine.take_audio_events();
-    let telemetry = audio_engine.take_telemetry();
-    let audio_engine = Arc::new(audio_engine);
+    let mut audio_engine = Arc::new(AudioEngine::new());
 
-    let mut execution = ExecutionEngine::new();
-    execution.set_workspace_state(workspace.clone());
-    execution.set_audio_engine(&audio_engine, audio_events);
+    let execution = ExecutionEngine::new(
+        workspace.clone(),
+        audio_engine.command_sender(),
+        audio_engine.take_audio_events(),
+    );
 
     let (app, exec_state_forward, theme_reload_tx) = App::new(
         workspace,
         execution.state_receiver(),
         execution.handle(),
-        telemetry,
         audio_engine,
     );
 

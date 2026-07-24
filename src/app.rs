@@ -14,7 +14,7 @@ use floem::reactive::{
 use floem::views::{Decorators, dyn_container, v_stack};
 use floem::window::WindowConfig;
 use floem::{Application, IntoView};
-use ringbuf::HeapCons;
+
 use tokio::sync::watch;
 
 use crate::audio::{AudioEngine, AudioTelemetry};
@@ -29,7 +29,7 @@ pub struct App {
     workspace: Arc<ArcSwap<WorkspaceState>>,
     exec_state_rx: Receiver<Arc<ExecutionState>>,
     execution: ExecutionHandle,
-    telemetry: Option<HeapCons<AudioTelemetry>>,
+    telemetry: Option<Arc<AudioTelemetry>>,
     audio_engine: Arc<AudioEngine>,
     theme_signal: RwSignal<Theme>,
     theme_rx: crossbeam_channel::Receiver<Theme>,
@@ -44,7 +44,6 @@ impl App {
         workspace: Arc<ArcSwap<WorkspaceState>>,
         exec_state_rx: watch::Receiver<Arc<ExecutionState>>,
         execution: ExecutionHandle,
-        telemetry: HeapCons<AudioTelemetry>,
         audio_engine: Arc<AudioEngine>,
     ) -> (
         Self,
@@ -73,7 +72,7 @@ impl App {
                 workspace,
                 exec_state_rx: ui_exec_state_rx,
                 execution,
-                telemetry: Some(telemetry),
+                telemetry: Some(audio_engine.telemetry()),
                 audio_engine,
                 theme_signal,
                 theme_rx,

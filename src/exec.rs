@@ -55,25 +55,29 @@ impl ExecutionHandle {
 
 pub struct ExecutionEngine {
     rx_events: mpsc::Receiver<UiEvent>,
-    rx_audio: Option<mpsc::Receiver<AudioEvent>>,
-    tx_dsp: Option<mpsc::Sender<DSPCommand>>,
+    rx_audio: mpsc::Receiver<AudioEvent>,
+    tx_dsp: mpsc::Sender<DSPCommand>,
     tx_state: watch::Sender<Arc<ExecutionState>>,
     tx_events: mpsc::Sender<UiEvent>,
-    workspace_state: Option<Arc<ArcSwap<WorkspaceState>>>,
+    workspace_state: Arc<ArcSwap<WorkspaceState>>,
     state: Arc<ExecutionState>,
 }
 
 impl ExecutionEngine {
-    pub fn new() -> Self {
-        let (_state_tx, _state_rx) = watch::channel(Arc::new(ExecutionState::default()));
+    pub fn new(
+        workspace_state: Arc<ArcSwap<WorkspaceState>>,
+        tx_dsp: mpsc::Sender<DSPCommand>,
+        rx_audio: mpsc::Receiver<AudioEvent>,
+    ) -> Self {
+        let (state_tx, _state_rx) = watch::channel(Arc::new(ExecutionState::default()));
         let (events_tx, events_rx) = mpsc::channel::<UiEvent>(64);
         Self {
             rx_events: events_rx,
             tx_events: events_tx,
-            rx_audio: None,
-            tx_dsp: None,
-            tx_state: _state_tx,
-            workspace_state: None,
+            rx_audio,
+            tx_dsp,
+            tx_state: state_tx,
+            workspace_state,
             state: Arc::new(ExecutionState::default()),
         }
     }
@@ -88,54 +92,26 @@ impl ExecutionEngine {
         }
     }
 
-    pub fn set_workspace_state(&mut self, workspace: Arc<ArcSwap<WorkspaceState>>) {
-        self.workspace_state = Some(workspace);
-    }
-
-    pub fn set_audio_engine(
-        &mut self,
-        audio: &crate::audio::AudioEngine,
-        events: mpsc::Receiver<AudioEvent>,
-    ) {
-        self.tx_dsp = Some(audio.command_sender());
-        self.rx_audio = Some(events);
-    }
-
-    /// Helper: Publish the engine-owned execution state through the `watch`
-    /// channel.
-    ///
-    /// Hands the current `Arc` to subscribers via a cheap refcount bump — the
-    /// owned `Arc` stays put (ground truth). `send` only notifies when the
-    /// value changed, so the UI is not woken spuriously.
-    pub fn commit_exec_state(&self) {
-        let _ = self.tx_state.send(self.state.clone());
-    }
-
-    /// Lock-free read of the workspace: `load_full` returns an
-    /// `Arc<WorkspaceState>` (O(1) clone of the shared pointer), and we only
-    /// borrow through it — the workspace value is never copied. The engine
-    /// always resolves the successor against the latest cue ordering the UI
-    /// published via the `ArcSwap`.
-    fn workspace_state(&self) -> Arc<WorkspaceState> {
-        self.workspace_state
-            .as_ref()
-            .expect("workspace state must be set")
-            .load_full()
-    }
-
-    pub async fn run(mut self) {
-        let mut rx_audio = self.rx_audio.take().expect("audio engine must be set");
-        let tx_dsp = self.tx_dsp.take().expect("audio engine must be set");
+    pub async fn run(self) {
+        let Self {
+            mut rx_events,
+            mut rx_audio,
+            tx_dsp,
+            tx_state,
+            tx_events: _,
+            workspace_state,
+            mut state,
+        } = self;
         loop {
             tokio::select! {
-                event = self.rx_events.recv() => {
+                event = rx_events.recv() => {
                     let Some(event) = event else { break };
                     if let UiEvent::SetAudioDevice(device_name) = event {
                         let _ = tx_dsp.send(DSPCommand::SetAudioDevice { device_name }).await;
                         continue;
                     }
-                    let cuelist = self.workspace_state().cuelist.clone();
-                    let next = match self.state.playhead {
+                    let cuelist = workspace_state.load_full().cuelist.clone();
+                    let next = match state.playhead {
                         Playhead::Stopped => cuelist.iter().next().cloned(),
                         Playhead::Playing(active) => cuelist.iter_after(active).and_then(|mut it| it.next().cloned()),
                     };
@@ -149,17 +125,17 @@ impl ExecutionEngine {
                                 looping: *looping,
                             }).await;
                         }
-                        Arc::make_mut(&mut self.state).playhead = Playhead::Playing(cue.id);
-                        self.commit_exec_state();
+                        Arc::make_mut(&mut state).playhead = Playhead::Playing(cue.id);
+                        let _ = tx_state.send(state.clone());
                     }
                 }
                 event = rx_audio.recv() => {
                     let Some(event) = event else { break };
                     match event {
                         AudioEvent::PlaybackFinished { cue_id } => {
-                            if self.state.playhead == Playhead::Playing(cue_id) {
-                                Arc::make_mut(&mut self.state).playhead = Playhead::Stopped;
-                                self.commit_exec_state();
+                            if state.playhead == Playhead::Playing(cue_id) {
+                                Arc::make_mut(&mut state).playhead = Playhead::Stopped;
+                                let _ = tx_state.send(state.clone());
                             }
                         }
                         AudioEvent::DeviceLost { device_name, .. } => {
