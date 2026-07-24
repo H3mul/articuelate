@@ -32,46 +32,73 @@ use crate::model::{CueKind, ExecutionState, Playhead, WorkspaceState};
 ///
 /// Only `Go` is wired for now; this enum is the single extension point for
 /// future UI events (Pause, Panic, Scrub, …).
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum UiEvent {
     /// The operator pressed GO.
     Go,
+    SetAudioDevice(String),
+}
+
+#[derive(Clone)]
+pub struct ExecutionHandle {
+    tx_events: mpsc::Sender<UiEvent>,
+}
+
+impl ExecutionHandle {
+    pub fn send_user_intent(
+        &self,
+        event: UiEvent,
+    ) -> Result<(), mpsc::error::TrySendError<UiEvent>> {
+        self.tx_events.try_send(event)
+    }
 }
 
 pub struct ExecutionEngine {
     rx_events: mpsc::Receiver<UiEvent>,
-    rx_audio: mpsc::Receiver<AudioEvent>,
-    tx_dsp: mpsc::Sender<DSPCommand>,
+    rx_audio: Option<mpsc::Receiver<AudioEvent>>,
+    tx_dsp: Option<mpsc::Sender<DSPCommand>>,
     tx_state: watch::Sender<Arc<ExecutionState>>,
-    workspace_state: Arc<ArcSwap<WorkspaceState>>,
+    tx_events: mpsc::Sender<UiEvent>,
+    workspace_state: Option<Arc<ArcSwap<WorkspaceState>>>,
     state: Arc<ExecutionState>,
 }
 
 impl ExecutionEngine {
-    pub fn init(
-        workspace_state: Arc<ArcSwap<WorkspaceState>>,
-        tx_dsp: mpsc::Sender<DSPCommand>,
-        rx_audio: mpsc::Receiver<AudioEvent>,
-    ) -> (
-        Self,
-        watch::Receiver<Arc<ExecutionState>>,
-        mpsc::Sender<UiEvent>,
-    ) {
-        let state = Arc::new(ExecutionState::default());
+    pub fn new() -> Self {
+        let (_state_tx, _state_rx) = watch::channel(Arc::new(ExecutionState::default()));
         let (events_tx, events_rx) = mpsc::channel::<UiEvent>(64);
-        let (state_tx, state_rx) = watch::channel(state.clone());
-        (
-            Self {
-                rx_events: events_rx,
-                rx_audio: rx_audio,
-                tx_dsp: tx_dsp,
-                tx_state: state_tx,
-                workspace_state,
-                state,
-            },
-            state_rx,
-            events_tx,
-        )
+        Self {
+            rx_events: events_rx,
+            tx_events: events_tx,
+            rx_audio: None,
+            tx_dsp: None,
+            tx_state: _state_tx,
+            workspace_state: None,
+            state: Arc::new(ExecutionState::default()),
+        }
+    }
+
+    pub fn state_receiver(&self) -> watch::Receiver<Arc<ExecutionState>> {
+        self.tx_state.subscribe()
+    }
+
+    pub fn handle(&self) -> ExecutionHandle {
+        ExecutionHandle {
+            tx_events: self.tx_events.clone(),
+        }
+    }
+
+    pub fn set_workspace_state(&mut self, workspace: Arc<ArcSwap<WorkspaceState>>) {
+        self.workspace_state = Some(workspace);
+    }
+
+    pub fn set_audio_engine(
+        &mut self,
+        audio: &crate::audio::AudioEngine,
+        events: mpsc::Receiver<AudioEvent>,
+    ) {
+        self.tx_dsp = Some(audio.command_sender());
+        self.rx_audio = Some(events);
     }
 
     /// Helper: Publish the engine-owned execution state through the `watch`
@@ -90,14 +117,23 @@ impl ExecutionEngine {
     /// always resolves the successor against the latest cue ordering the UI
     /// published via the `ArcSwap`.
     fn workspace_state(&self) -> Arc<WorkspaceState> {
-        self.workspace_state.load_full()
+        self.workspace_state
+            .as_ref()
+            .expect("workspace state must be set")
+            .load_full()
     }
 
     pub async fn run(mut self) {
+        let mut rx_audio = self.rx_audio.take().expect("audio engine must be set");
+        let tx_dsp = self.tx_dsp.take().expect("audio engine must be set");
         loop {
             tokio::select! {
                 event = self.rx_events.recv() => {
-                    let Some(UiEvent::Go) = event else { break };
+                    let Some(event) = event else { break };
+                    if let UiEvent::SetAudioDevice(device_name) = event {
+                        let _ = tx_dsp.send(DSPCommand::SetAudioDevice { device_name }).await;
+                        continue;
+                    }
                     let cuelist = self.workspace_state().cuelist.clone();
                     let next = match self.state.playhead {
                         Playhead::Stopped => cuelist.iter().next().cloned(),
@@ -106,7 +142,7 @@ impl ExecutionEngine {
                     if let Some(cue) = next {
                         let CueKind::Media { file_path, volume_db, looping, .. } = &cue.kind;
                         {
-                            let _ = self.tx_dsp.send(DSPCommand::Play {
+                            let _ = tx_dsp.send(DSPCommand::Play {
                                 cue_id: cue.id,
                                 file_path: file_path.clone(),
                                 volume_db: *volume_db,
@@ -117,7 +153,7 @@ impl ExecutionEngine {
                         self.commit_exec_state();
                     }
                 }
-                event = self.rx_audio.recv() => {
+                event = rx_audio.recv() => {
                     let Some(AudioEvent::PlaybackFinished { cue_id }) = event else { break };
                     if self.state.playhead == Playhead::Playing(cue_id) {
                         Arc::make_mut(&mut self.state).playhead = Playhead::Stopped;

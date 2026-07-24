@@ -6,6 +6,7 @@ use std::sync::Arc;
 use arc_swap::ArcSwap;
 use crossbeam_channel::Receiver;
 use floem::ext_event::create_signal_from_channel;
+
 use floem::reactive::{
     ReadSignal, RwSignal, SignalGet, SignalUpdate, SignalWith, create_effect, create_memo,
     create_rw_signal, provide_context,
@@ -14,10 +15,10 @@ use floem::views::{Decorators, dyn_container, v_stack};
 use floem::window::WindowConfig;
 use floem::{Application, IntoView};
 use ringbuf::HeapCons;
-use tokio::sync::{mpsc::Sender, watch};
+use tokio::sync::watch;
 
-use crate::audio::AudioTelemetry;
-use crate::exec::UiEvent;
+use crate::audio::{AudioEngine, AudioTelemetry};
+use crate::exec::ExecutionHandle;
 use crate::model::{ExecutionState, Playhead, WorkspaceState};
 use crate::style::{Theme, global_stylesheet, load_theme, theme};
 use crate::ui::{cuelist, panel::PanelSystem, status_bar, toolbar};
@@ -27,8 +28,9 @@ use crate::ui::{detail, media};
 pub struct App {
     workspace: Arc<ArcSwap<WorkspaceState>>,
     exec_state_rx: Receiver<Arc<ExecutionState>>,
-    events_tx: Sender<UiEvent>,
+    execution: ExecutionHandle,
     telemetry: Option<HeapCons<AudioTelemetry>>,
+    audio_engine: Arc<AudioEngine>,
     theme_signal: RwSignal<Theme>,
     theme_rx: crossbeam_channel::Receiver<Theme>,
 }
@@ -38,11 +40,12 @@ impl App {
     ///
     /// The returned future is intended to be spawned on the shared Tokio runtime
     /// via `handle.spawn(forwarder)`, keeping `main.rs` free of crossbeam/Floem details.
-    pub fn init(
+    pub fn new(
         workspace: Arc<ArcSwap<WorkspaceState>>,
         exec_state_rx: watch::Receiver<Arc<ExecutionState>>,
-        events_tx: Sender<UiEvent>,
+        execution: ExecutionHandle,
         telemetry: HeapCons<AudioTelemetry>,
+        audio_engine: Arc<AudioEngine>,
     ) -> (
         Self,
         impl Future<Output = ()> + Send + 'static,
@@ -69,8 +72,9 @@ impl App {
             Self {
                 workspace,
                 exec_state_rx: ui_exec_state_rx,
-                events_tx,
+                execution,
                 telemetry: Some(telemetry),
+                audio_engine,
                 theme_signal,
                 theme_rx,
             },
@@ -83,15 +87,22 @@ impl App {
         let Self {
             workspace,
             exec_state_rx,
-            events_tx,
+            execution,
             telemetry,
+            audio_engine,
             theme_signal,
             theme_rx,
         } = self;
 
+        let devices = audio_engine.output_devices();
+        if let Some(device) = devices.first().cloned() {
+            let _ = execution.send_user_intent(crate::exec::UiEvent::SetAudioDevice(device));
+        }
         Application::new()
             .window(
                 move |_| {
+                    let selected_device = create_rw_signal(devices.first().cloned());
+
                     let exec_state_signal_r =
                         create_signal_from_channel::<Arc<ExecutionState>>(exec_state_rx);
 
@@ -116,10 +127,18 @@ impl App {
 
                     let _media = telemetry.map(media::view);
                     let ws = workspace.clone();
-                    let tx = events_tx.clone();
+                    let execution = execution.clone();
                     dyn_container(
                         move || theme_gen.get(),
-                        move |_| app_view(ws.clone(), exec_state_signal_r, tx.clone()),
+                        move |_| {
+                            app_view(
+                                ws.clone(),
+                                exec_state_signal_r,
+                                execution.clone(),
+                                devices.clone(),
+                                selected_device,
+                            )
+                        },
                     )
                     // Make the base view fill the window
                     .style(|s| s.size_full().min_size(0.0, 0.0))
@@ -159,7 +178,9 @@ fn update_workspace(
 fn app_view(
     workspace: Arc<ArcSwap<WorkspaceState>>,
     exec_state: ReadSignal<Option<Arc<ExecutionState>>>,
-    events_tx: Sender<UiEvent>,
+    execution: ExecutionHandle,
+    devices: Vec<String>,
+    selected_device: RwSignal<Option<String>>,
 ) -> impl IntoView {
     let workspace_signal: RwSignal<Arc<WorkspaceState>> = create_rw_signal(workspace.load_full());
     let cuelist_memo = create_memo(move |_| workspace_signal.with(|ws| ws.cuelist.clone()));
@@ -189,7 +210,14 @@ fn app_view(
 
     let panel_system = PanelSystem::new();
 
-    let toolbar = toolbar::view(cuelist_memo, active_cue, selected, events_tx);
+    let toolbar = toolbar::view(
+        cuelist_memo,
+        active_cue,
+        selected,
+        execution,
+        devices,
+        selected_device,
+    );
 
     let main_view = floem::views::v_stack((toolbar, cuelist_view))
         .style(|s| s.width_full().height_full().min_size(0.0, 0.0));

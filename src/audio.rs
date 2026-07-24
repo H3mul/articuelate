@@ -6,10 +6,11 @@
 
 use std::io::BufReader;
 use std::path::PathBuf;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use std::thread::{self, JoinHandle};
 use std::time::Duration;
 
+use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use ringbuf::traits::{Consumer, Producer, Split};
 use ringbuf::{HeapCons, HeapProd, HeapRb};
 use tokio::sync::{Notify, mpsc};
@@ -20,7 +21,11 @@ pub const SAMPLE_BUFFER_SIZE: usize = 48_000;
 pub const TELEMETRY_BUFFER_SIZE: usize = 256;
 
 #[derive(Clone, Debug)]
+#[allow(dead_code)]
 pub enum DSPCommand {
+    SetAudioDevice {
+        device_name: String,
+    },
     Play {
         cue_id: CueId,
         file_path: PathBuf,
@@ -45,6 +50,7 @@ pub enum AudioEvent {
 }
 
 #[derive(Clone, Debug)]
+#[allow(dead_code)]
 pub enum AudioTelemetry {
     PlaybackState {
         cue_id: CueId,
@@ -56,36 +62,49 @@ pub enum AudioTelemetry {
 }
 
 #[derive(Clone, Debug)]
+#[allow(dead_code)]
 pub enum DecoderControl {
     SeekTo(f32),
     Stop,
 }
 
+#[allow(dead_code)]
 struct DecoderBuffers {
     samples: HeapCons<f32>,
     control: HeapProd<DecoderControl>,
 }
 
-struct CpalCommand {
+struct PlaybackNode {
     cue_id: CueId,
-    buffers: DecoderBuffers,
+    samples: HeapCons<f32>,
+}
+
+type SharedEvents = Arc<Mutex<HeapProd<AudioEvent>>>;
+type SharedTelemetry = Arc<Mutex<HeapProd<AudioTelemetry>>>;
+
+enum CpalCommand {
+    Play {
+        cue_id: CueId,
+        buffers: DecoderBuffers,
+    },
+    SetAudioDevice(String),
 }
 
 /// Owner of every resource belonging to the audio domain.
 pub struct AudioEngine {
+    host: Arc<cpal::Host>,
     runtime: Option<tokio::runtime::Runtime>,
     cpal_thread: Option<JoinHandle<()>>,
     cpal_tx: Option<std::sync::mpsc::Sender<CpalCommand>>,
+    command_tx: mpsc::Sender<DSPCommand>,
+    audio_event_rx: Option<mpsc::Receiver<AudioEvent>>,
+    telemetry_cons: Option<HeapCons<AudioTelemetry>>,
 }
 
 impl AudioEngine {
     /// Starts the private async runtime, router, event forwarder, and CPAL thread.
-    pub fn init() -> (
-        Self,
-        mpsc::Sender<DSPCommand>,
-        mpsc::Receiver<AudioEvent>,
-        HeapCons<AudioTelemetry>,
-    ) {
+    pub fn new() -> Self {
+        let host = Arc::new(cpal::default_host());
         let runtime = tokio::runtime::Builder::new_multi_thread()
             .enable_all()
             .build()
@@ -99,20 +118,59 @@ impl AudioEngine {
         let notify = Arc::new(Notify::new());
         let (cpal_tx, cpal_rx) = std::sync::mpsc::channel();
 
-        let cpal_thread = spawn_cpal_thread(cpal_rx, event_prod, telemetry_prod, notify.clone());
+        let cpal_thread = spawn_cpal_thread(
+            host.clone(),
+            cpal_rx,
+            event_prod,
+            telemetry_prod,
+            notify.clone(),
+        );
         runtime.spawn(command_router(command_rx, cpal_tx.clone()));
         runtime.spawn(event_forwarder(event_cons, notify, audio_event_tx));
 
-        (
-            Self {
-                runtime: Some(runtime),
-                cpal_thread: Some(cpal_thread),
-                cpal_tx: Some(cpal_tx),
-            },
+        Self {
+            host,
+            runtime: Some(runtime),
+            cpal_thread: Some(cpal_thread),
+            cpal_tx: Some(cpal_tx),
             command_tx,
-            audio_event_rx,
-            telemetry_cons,
-        )
+            audio_event_rx: Some(audio_event_rx),
+            telemetry_cons: Some(telemetry_cons),
+        }
+    }
+
+    pub fn command_sender(&self) -> mpsc::Sender<DSPCommand> {
+        self.command_tx.clone()
+    }
+
+    #[allow(dead_code)]
+    pub async fn send_command(
+        &self,
+        command: DSPCommand,
+    ) -> Result<(), mpsc::error::SendError<DSPCommand>> {
+        self.command_tx.send(command).await
+    }
+
+    pub fn take_audio_events(&mut self) -> mpsc::Receiver<AudioEvent> {
+        self.audio_event_rx
+            .take()
+            .expect("audio events already taken")
+    }
+
+    pub fn take_telemetry(&mut self) -> HeapCons<AudioTelemetry> {
+        self.telemetry_cons
+            .take()
+            .expect("audio telemetry already taken")
+    }
+
+    /// Returns the output device names discovered during subsystem startup.
+    pub fn output_devices(&self) -> Vec<String> {
+        self.host
+            .output_devices()
+            .into_iter()
+            .flatten()
+            .filter_map(|device| device.name().ok())
+            .collect()
     }
 }
 
@@ -134,12 +192,15 @@ async fn command_router(
 ) {
     while let Some(command) = rx.recv().await {
         match command {
+            DSPCommand::SetAudioDevice { device_name } => {
+                let _ = cpal_tx.send(CpalCommand::SetAudioDevice(device_name));
+            }
             DSPCommand::Play {
                 cue_id, file_path, ..
             } => {
                 let (sample_prod, sample_cons) = HeapRb::<f32>::new(SAMPLE_BUFFER_SIZE).split();
                 let (control_prod, control_cons) = HeapRb::<DecoderControl>::new(32).split();
-                let _ = cpal_tx.send(CpalCommand {
+                let _ = cpal_tx.send(CpalCommand::Play {
                     cue_id,
                     buffers: DecoderBuffers {
                         samples: sample_cons,
@@ -199,44 +260,204 @@ async fn event_forwarder(
 }
 
 fn spawn_cpal_thread(
+    host: Arc<cpal::Host>,
     rx: std::sync::mpsc::Receiver<CpalCommand>,
-    mut events: HeapProd<AudioEvent>,
-    mut telemetry: HeapProd<AudioTelemetry>,
+    events: HeapProd<AudioEvent>,
+    telemetry: HeapProd<AudioTelemetry>,
     notify: Arc<Notify>,
 ) -> JoinHandle<()> {
     thread::Builder::new()
         .name("articuelate-cpal".into())
         .spawn(move || {
-            // Touch the host on the owning thread. Stream construction belongs here;
-            // failure to have an output device must not prevent the UI from starting.
-            let _host = cpal::default_host();
-            let mut active = Vec::new();
+            let active = Arc::new(Mutex::new(Vec::<PlaybackNode>::new()));
+            let events = Arc::new(Mutex::new(events));
+            let telemetry = Arc::new(Mutex::new(telemetry));
+            let mut stream: Option<cpal::Stream> = None;
+
             loop {
                 let command = match rx.recv_timeout(Duration::from_millis(16)) {
                     Ok(command) => command,
                     Err(std::sync::mpsc::RecvTimeoutError::Timeout) => continue,
                     Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => break,
                 };
-                active.push((command.cue_id, command.buffers));
-                for (cue_id, buffers) in &mut active {
-                    let _ = buffers.samples.try_pop();
-                    let _ = telemetry.try_push(AudioTelemetry::PlaybackState {
-                        cue_id: *cue_id,
-                        current_time_sec: 0.0,
-                        total_duration_sec: 0.0,
-                        left_peak: 0.0,
-                        right_peak: 0.0,
-                    });
+                match command {
+                    CpalCommand::Play { cue_id, buffers } => {
+                        if let Ok(mut active) = active.lock() {
+                            active.push(PlaybackNode {
+                                cue_id,
+                                samples: buffers.samples,
+                            });
+                        }
+                    }
+                    CpalCommand::SetAudioDevice(name) => {
+                        if let Ok(new_stream) = build_output_stream(
+                            &host,
+                            &name,
+                            active.clone(),
+                            events.clone(),
+                            telemetry.clone(),
+                            notify.clone(),
+                        ) {
+                            if let Err(error) = new_stream.play() {
+                                eprintln!("failed to start audio output stream: {error}");
+                            } else {
+                                stream = Some(new_stream);
+                            }
+                        }
+                    }
                 }
             }
-            for (cue_id, _) in active {
-                if events
-                    .try_push(AudioEvent::PlaybackFinished { cue_id })
-                    .is_ok()
-                {
-                    notify.notify_one();
+            drop(stream);
+            if let Ok(mut events) = events.lock() {
+                if let Ok(active) = active.lock() {
+                    for node in active.iter() {
+                        if events
+                            .try_push(AudioEvent::PlaybackFinished {
+                                cue_id: node.cue_id,
+                            })
+                            .is_ok()
+                        {
+                            notify.notify_one();
+                        }
+                    }
                 }
             }
         })
         .expect("failed to spawn CPAL thread")
+}
+
+fn build_output_stream(
+    host: &cpal::Host,
+    device_name: &str,
+    active: Arc<Mutex<Vec<PlaybackNode>>>,
+    events: SharedEvents,
+    telemetry: SharedTelemetry,
+    notify: Arc<Notify>,
+) -> Result<cpal::Stream, cpal::BuildStreamError> {
+    let device = host
+        .output_devices()
+        .map_err(|_| cpal::BuildStreamError::DeviceNotAvailable)?
+        .find(|device| {
+            device
+                .name()
+                .map(|name| name == device_name)
+                .unwrap_or(false)
+        })
+        .ok_or(cpal::BuildStreamError::DeviceNotAvailable)?;
+    let supported = device
+        .default_output_config()
+        .map_err(|_| cpal::BuildStreamError::DeviceNotAvailable)?;
+    let config = supported.config();
+    let channels = config.channels as usize;
+    let error = |error| eprintln!("audio output stream error: {error}");
+
+    match supported.sample_format() {
+        cpal::SampleFormat::F32 => device.build_output_stream(
+            &config,
+            move |data: &mut [f32], _| {
+                fill_output(data, channels, &active, &events, &telemetry, &notify)
+            },
+            error,
+            None,
+        ),
+        cpal::SampleFormat::I16 => device.build_output_stream(
+            &config,
+            move |data: &mut [i16], _| {
+                fill_output_i16(data, channels, &active, &events, &telemetry, &notify)
+            },
+            error,
+            None,
+        ),
+        cpal::SampleFormat::U16 => device.build_output_stream(
+            &config,
+            move |data: &mut [u16], _| {
+                fill_output_u16(data, channels, &active, &events, &telemetry, &notify)
+            },
+            error,
+            None,
+        ),
+        _ => Err(cpal::BuildStreamError::StreamConfigNotSupported),
+    }
+}
+
+fn next_sample(active: &mut [PlaybackNode]) -> f32 {
+    active
+        .iter_mut()
+        .find_map(|node| node.samples.try_pop())
+        .unwrap_or(0.0)
+}
+
+fn fill_output(
+    data: &mut [f32],
+    channels: usize,
+    active: &Arc<Mutex<Vec<PlaybackNode>>>,
+    events: &SharedEvents,
+    telemetry: &SharedTelemetry,
+    notify: &Arc<Notify>,
+) {
+    let Ok(mut active) = active.lock() else {
+        data.fill(0.0);
+        return;
+    };
+    for frame in data.chunks_mut(channels) {
+        let sample = next_sample(&mut active);
+        frame.fill(sample);
+    }
+    publish_telemetry(&active, telemetry);
+    let _ = (events, notify);
+}
+
+fn fill_output_i16(
+    data: &mut [i16],
+    channels: usize,
+    active: &Arc<Mutex<Vec<PlaybackNode>>>,
+    events: &SharedEvents,
+    telemetry: &SharedTelemetry,
+    notify: &Arc<Notify>,
+) {
+    let Ok(mut active) = active.lock() else {
+        data.fill(0);
+        return;
+    };
+    for frame in data.chunks_mut(channels) {
+        frame.fill((next_sample(&mut active) * i16::MAX as f32) as i16);
+    }
+    publish_telemetry(&active, telemetry);
+    let _ = (events, notify);
+}
+
+fn fill_output_u16(
+    data: &mut [u16],
+    channels: usize,
+    active: &Arc<Mutex<Vec<PlaybackNode>>>,
+    events: &SharedEvents,
+    telemetry: &SharedTelemetry,
+    notify: &Arc<Notify>,
+) {
+    let Ok(mut active) = active.lock() else {
+        data.fill(u16::MAX / 2);
+        return;
+    };
+    for frame in data.chunks_mut(channels) {
+        frame.fill(
+            (next_sample(&mut active).clamp(-1.0, 1.0) * i16::MAX as f32 + u16::MAX as f32 / 2.0)
+                as u16,
+        );
+    }
+    publish_telemetry(&active, telemetry);
+    let _ = (events, notify);
+}
+
+fn publish_telemetry(active: &[PlaybackNode], telemetry: &SharedTelemetry) {
+    if let Ok(mut telemetry) = telemetry.lock() {
+        for node in active {
+            let _ = telemetry.try_push(AudioTelemetry::PlaybackState {
+                cue_id: node.cue_id,
+                current_time_sec: 0.0,
+                total_duration_sec: 0.0,
+                left_peak: 0.0,
+                right_peak: 0.0,
+            });
+        }
+    }
 }
