@@ -12,6 +12,7 @@ use rodio::Source;
 use crate::audio::AudioEvent;
 use crate::audio::{AudioDriver, AudioDriverError, AudioTelemetry, DriverCapabilities};
 use crate::model::CueId;
+use tracing::{debug, error, info, warn};
 
 use telemetry_source::TelemetrySource;
 
@@ -29,6 +30,11 @@ impl RodioDriver {
         audio_event_tx: tokio::sync::mpsc::Sender<AudioEvent>,
     ) -> Self {
         let (stream, stream_handle) = rodio::OutputStream::try_default().ok().unzip();
+        if stream_handle.is_some() {
+            info!("Rodio driver initialized with default output device");
+        } else {
+            warn!("Rodio driver initialized without an output device");
+        }
         Self {
             _stream: stream,
             stream_handle,
@@ -96,10 +102,11 @@ impl AudioDriver for RodioDriver {
     }
 
     async fn set_device(&mut self, device_name: String) -> Result<(), AudioDriverError> {
-        eprintln!("[RodioDriver] Switching audio device to: {device_name}");
+        info!(device = %device_name, "Switching audio device");
 
         // 1. Stop all active sinks (old hardware endpoint closing)
         for (cue_id, sink) in self.sinks.drain() {
+            debug!(cue_id = ?cue_id, "Stopping sink for device switch");
             sink.stop();
             self.telemetry.remove(cue_id);
         }
@@ -113,10 +120,12 @@ impl AudioDriver for RodioDriver {
             Ok((new_stream, new_handle, _resolved_name)) => {
                 self._stream = Some(new_stream);
                 self.stream_handle = Some(new_handle);
+                info!(device = %device_name, "Audio device switched successfully");
                 Ok(())
             }
             Err(err) => {
                 let err_msg = format!("Failed to switch to device '{device_name}': {err}");
+                error!(device = %device_name, %err, "Device switch failed, falling back to default");
 
                 // Notify execution engine of device failure
                 let _ = self.audio_event_tx.try_send(AudioEvent::DeviceLost {
@@ -128,6 +137,7 @@ impl AudioDriver for RodioDriver {
                 if let Ok((def_stream, def_handle, _def_name)) = Self::create_default_stream() {
                     self._stream = Some(def_stream);
                     self.stream_handle = Some(def_handle);
+                    info!("Fell back to default audio device");
                 }
 
                 Err(AudioDriverError::DeviceError(err_msg))
@@ -148,12 +158,13 @@ impl AudioDriver for RodioDriver {
             .as_ref()
             .ok_or_else(|| AudioDriverError::PlaybackError("No output device available".into()))?;
         if let Some(old) = self.sinks.remove(&cue_id) {
+            debug!(cue_id = ?cue_id, "Replacing existing sink");
             old.stop();
         }
 
         let sink = rodio::Sink::try_new(handle)
             .map_err(|e| AudioDriverError::PlaybackError(e.to_string()))?;
-        let file = std::fs::File::open(file_path)
+        let file = std::fs::File::open(&file_path)
             .map_err(|e| AudioDriverError::PlaybackError(e.to_string()))?;
         let decoder = rodio::Decoder::new(std::io::BufReader::new(file))
             .map_err(|e| AudioDriverError::PlaybackError(e.to_string()))?;
@@ -166,6 +177,14 @@ impl AudioDriver for RodioDriver {
         }
         sink.set_volume(10.0_f32.powf(volume_db / 20.0));
         self.sinks.insert(cue_id, sink);
+
+        info!(
+            cue_id = ?cue_id,
+            path = %file_path.display(),
+            volume_db,
+            looping,
+            "Cue playback started"
+        );
         Ok(())
     }
 
@@ -179,6 +198,7 @@ impl AudioDriver for RodioDriver {
 
     async fn stop_cue(&mut self, cue_id: CueId) -> Result<(), AudioDriverError> {
         if let Some(sink) = self.sinks.remove(&cue_id) {
+            debug!(cue_id = ?cue_id, "Stopping cue");
             sink.stop();
         }
         Ok(())

@@ -24,6 +24,7 @@ use arc_swap::ArcSwap;
 use std::sync::Arc;
 
 use tokio::sync::{mpsc, watch};
+use tracing::{debug, info, warn};
 
 use crate::audio::{AudioEvent, DSPCommand};
 use crate::model::{CueKind, ExecutionState, Playhead, WorkspaceState};
@@ -102,14 +103,19 @@ impl ExecutionEngine {
             workspace_state,
             mut state,
         } = self;
+
+        info!("Execution engine started");
+
         loop {
             tokio::select! {
                 event = rx_events.recv() => {
                     let Some(event) = event else { break };
                     if let UiEvent::SetAudioDevice(device_name) = event {
+                        debug!(device = %device_name, "Execution engine routing SetAudioDevice");
                         let _ = tx_dsp.send(DSPCommand::SetAudioDevice { device_name }).await;
                         continue;
                     }
+                    debug!("Execution engine received GO");
                     let cuelist = workspace_state.load_full().cuelist.clone();
                     let next = match state.playhead {
                         Playhead::Stopped => cuelist.iter().next().cloned(),
@@ -127,24 +133,31 @@ impl ExecutionEngine {
                         }
                         Arc::make_mut(&mut state).playhead = Playhead::Playing(cue.id);
                         let _ = tx_state.send(state.clone());
+                        info!(
+                            cue_id = ?cue.id,
+                            cue_name = %cue.name,
+                            "Playhead advanced"
+                        );
+                    } else {
+                        warn!("GO pressed but no next cue found");
                     }
                 }
                 event = rx_audio.recv() => {
                     let Some(event) = event else { break };
                     match event {
                         AudioEvent::PlaybackFinished { cue_id } => {
+                            debug!(cue_id = ?cue_id, "Playback finished");
                             if state.playhead == Playhead::Playing(cue_id) {
                                 Arc::make_mut(&mut state).playhead = Playhead::Stopped;
                                 let _ = tx_state.send(state.clone());
+                                info!(cue_id = ?cue_id, "Playhead returned to stopped");
                             }
                         }
                         AudioEvent::DeviceLost { device_name, .. } => {
-                            // Keep the execution loop alive while the audio
-                            // router tears down the failed stream. If the
-                            // event identifies the lost device, retrying it is
-                            // harmless and lets the router perform a clean
-                            // context handoff; the UI can select another
-                            // device through UiEvent::SetAudioDevice.
+                            warn!(
+                                device = ?device_name,
+                                "Audio device lost, attempting reconnection"
+                            );
                             if let Some(device_name) = device_name {
                                 let _ = tx_dsp.send(DSPCommand::SetAudioDevice { device_name }).await;
                             }
@@ -153,5 +166,7 @@ impl ExecutionEngine {
                 }
             }
         }
+
+        info!("Execution engine stopped");
     }
 }

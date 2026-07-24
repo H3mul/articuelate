@@ -13,6 +13,7 @@ use std::sync::atomic::{AtomicU32, AtomicU64, Ordering};
 use tokio::sync::mpsc;
 
 use crate::model::CueId;
+use tracing::{debug, error, info};
 
 pub use cpal_driver::CpalDriver;
 pub use driver::{AudioDriver, AudioDriverError, DriverCapabilities};
@@ -169,12 +170,19 @@ impl AudioEngine {
         let telemetry = AudioTelemetry::new();
         let (command_tx, command_rx) = mpsc::channel(64);
         let (audio_event_tx, audio_event_rx) = mpsc::channel(64);
-        let device_names = cpal::default_host()
+        let device_names: Vec<String> = cpal::default_host()
             .output_devices()
             .into_iter()
             .flatten()
             .filter_map(|device| cpal::traits::DeviceTrait::name(&device).ok())
             .collect();
+
+        info!(
+            driver = ?driver_type,
+            device_count = device_names.len(),
+            "Audio engine initializing"
+        );
+
         let runtime = tokio::runtime::Builder::new_multi_thread()
             .enable_all()
             .build()
@@ -244,15 +252,19 @@ impl AudioEngine {
 
 impl Drop for AudioEngine {
     fn drop(&mut self) {
+        debug!("Audio engine shutting down");
         self.command_tx.take();
         if let Some(thread) = self.runtime_thread.take() {
             let _ = thread.join();
         }
+        info!("Audio engine stopped");
     }
 }
 
 async fn driver_router(mut rx: mpsc::Receiver<DSPCommand>, mut driver: Box<dyn AudioDriver>) {
+    info!("Audio driver router started");
     while let Some(command) = rx.recv().await {
+        debug!(?command, "Audio driver received command");
         let result = match command {
             DSPCommand::SetAudioDevice { device_name } => driver.set_device(device_name).await,
             DSPCommand::Play {
@@ -274,7 +286,8 @@ async fn driver_router(mut rx: mpsc::Receiver<DSPCommand>, mut driver: Box<dyn A
             }
         };
         if let Err(error) = result {
-            eprintln!("[AudioEngine] {error}");
+            error!(%error, "Audio driver command failed");
         }
     }
+    info!("Audio driver router stopped");
 }

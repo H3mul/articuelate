@@ -16,6 +16,7 @@ use floem::window::WindowConfig;
 use floem::{Application, IntoView};
 
 use tokio::sync::watch;
+use tracing::{debug, info};
 
 use crate::audio::{AudioEngine, AudioTelemetry};
 use crate::exec::ExecutionHandle;
@@ -56,12 +57,15 @@ impl App {
         let _ = ui_exec_state_tx.send(initial_val);
 
         let state_forwarder = async move {
+            info!("Execution state forwarder started");
             while exec_state_r.changed().await.is_ok() {
                 let next = exec_state_r.borrow_and_update().clone();
+                debug!(?next.playhead, "Forwarding execution state to UI");
                 if ui_exec_state_tx.send(next).is_err() {
                     break;
                 }
             }
+            info!("Execution state forwarder stopped");
         };
 
         let (theme_tx, theme_rx) = crossbeam_channel::unbounded();
@@ -95,6 +99,7 @@ impl App {
 
         let devices = audio_engine.output_devices();
         if let Some(device) = devices.first().cloned() {
+            info!(device = %device, "Setting initial audio device");
             let _ = execution.send_user_intent(crate::exec::UiEvent::SetAudioDevice(device));
         }
         Application::new()

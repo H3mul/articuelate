@@ -10,6 +10,8 @@ mod ui;
 use std::sync::Arc;
 
 use arc_swap::ArcSwap;
+use tracing::info;
+use tracing_subscriber::EnvFilter;
 
 use crate::app::App;
 use crate::audio::AudioEngine;
@@ -17,6 +19,14 @@ use crate::exec::ExecutionEngine;
 use crate::model::WorkspaceState;
 
 fn main() {
+    tracing_subscriber::fmt()
+        .with_env_filter(
+            EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("debug")),
+        )
+        .with_writer(std::io::stderr)
+        .init();
+
+    info!("Articuelate starting");
     let workspace = Arc::new(ArcSwap::from_pointee(WorkspaceState::sample()));
 
     let mut audio_engine = Arc::new(AudioEngine::new());
@@ -52,4 +62,6 @@ fn main() {
     tokio_handle.spawn(crate::style::watch_theme_async(theme_reload_tx));
 
     app.run();
+
+    info!("Articuelate shutting down");
 }

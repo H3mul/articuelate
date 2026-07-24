@@ -14,6 +14,7 @@ use crossbeam_channel::Sender;
 use floem::reactive::{RwSignal, SignalGet, use_context};
 use notify::{RecursiveMode, Watcher};
 use serde::Deserialize;
+use tracing::{info, warn};
 
 use crate::style::tokens::{ColorStyle, DimStyle, FontStyle};
 
@@ -83,7 +84,9 @@ pub fn try_load_theme() -> Option<Theme> {
 /// Same as [`try_load_theme`] but panics on failure — called once at boot so
 /// the app never starts with a broken theme.
 pub fn load_theme() -> Theme {
-    try_load_theme().expect("failed to load theme at boot")
+    let theme = try_load_theme().expect("failed to load theme at boot");
+    info!("Theme loaded at boot");
+    theme
 }
 
 /// Recursively merge `overlay` into `base`. Nested tables are merged
@@ -145,6 +148,7 @@ pub fn watch_theme_async(tx: Sender<Theme>) -> std::pin::Pin<Box<dyn Future<Outp
     std::mem::forget(watcher);
 
     Box::pin(async move {
+        info!("Theme file watcher started");
         while let Some(_) = async_rx.recv().await {
             loop {
                 tokio::time::sleep(std::time::Duration::from_millis(200)).await;
@@ -152,7 +156,15 @@ pub fn watch_theme_async(tx: Sender<Theme>) -> std::pin::Pin<Box<dyn Future<Outp
                     break;
                 }
             }
-            let _ = try_load_theme().map(|t| tx.send(t));
+            match try_load_theme() {
+                Some(t) => {
+                    info!("Theme hot-reloaded");
+                    let _ = tx.send(t);
+                }
+                None => {
+                    warn!("Theme hot-reload failed, keeping current theme");
+                }
+            }
         }
     })
 }
