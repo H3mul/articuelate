@@ -1,0 +1,3 @@
+[submodule "mockup"]
+	path = mockup
+	url = git@github.com:H3mul/articuelate-ui-mockup.git
