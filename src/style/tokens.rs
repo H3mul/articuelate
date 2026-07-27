@@ -87,6 +87,24 @@ pub struct ColorStyle {
 
     pub border_subtle: Color,
     pub border_divider: Color,
+    pub border_emphasized: Color,
+
+    pub status_running_bg: Color,
+    pub border_row_divider: Color,
+    pub status_playhead_bg: Color,
+    pub status_running_bg_30: Color,
+    pub status_running_bg_20: Color,
+    pub status_running_bg_70: Color,
+    pub status_group_bg: Color,
+    pub status_error_bg: Color,
+    pub status_error_bg_12: Color,
+    pub status_group_bg_25: Color,
+    pub border_divider_40: Color,
+    pub text_disabled_50: Color,
+
+    pub slider_track: Color,
+    pub slider_fill: Color,
+    pub slider_thumb: Color,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -130,4 +148,33 @@ pub struct DimStyle {
 
     pub radius_sm: f64,
     pub radius_md: f64,
+    pub radius_full: f64,
+
+    pub control_sm: f64,
+    pub control_md: f64,
+    pub time_cell: f64,
+
+    pub col_playhead: f64,
+    pub col_drag: f64,
+    pub col_cue_number: f64,
+    pub col_time: f64,
+    pub col_menu: f64,
+
+    pub led_dot: f64,
+    pub meter_width_sm: f64,
+    pub meter_width_md: f64,
+    pub dot_sm: f64,
+
+    pub sidebar_width: f64,
+    pub detail_height: f64,
+    pub active_card_height: f64,
+    pub btn_go_width: f64,
+    pub btn_panic_width: f64,
+    pub textarea_height: f64,
+
+    pub icon_sm: f64,
+    pub icon_md: f64,
+
+    pub slider_track_height: f64,
+    pub slider_thumb_size: f64,
 }

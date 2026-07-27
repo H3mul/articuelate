@@ -1,0 +1,141 @@
+# Articuelate colour theme (Zed-inspired, Macchiato-based)
+
+[font.mono_sm]
+family = "JetBrains Mono"
+weight = "regular"
+size = 11.0
+line_height = 14.0
+
+[font.mono_xl]
+family = "JetBrains Mono"
+weight = "bold"
+size = 24.0
+line_height = 30.0
+
+[font.heading]
+family = "Segoe UI"
+weight = "semibold"
+size = 15.0
+line_height = 20.0
+
+[font.body_bold]
+family = "Segoe UI"
+weight = "medium"
+size = 13.0
+line_height = 18.0
+
+[font.body]
+family = "Segoe UI"
+weight = "regular"
+size = 13.0
+line_height = 18.0
+
+[dim]
+
+# Spacing Scale
+space_xs = 4.0
+space_sm = 8.0
+space_md = 12.0
+space_lg = 16.0
+space_xl = 24.0
+
+# UI Component Dimensions
+height_cue_row = 24.0
+status_bar_height = 24.0
+toolbar_height = 36.0
+control_sm = 28.0
+control_md = 32.0
+time_cell = 20.0
+min_panel_size = 225.0
+border_size = 1.0
+status_icon_size = 14.0
+
+# Grid Column Widths
+col_playhead = 20.0
+col_drag = 14.0
+col_cue_number = 46.0
+col_time = 70.0
+col_menu = 24.0
+
+# Micro dimensions for LED meters & status pips
+led_dot = 6.0
+meter_width_sm = 6.0
+meter_width_md = 8.0
+dot_sm = 8.0
+
+# Panel Structural Dimensions
+sidebar_width = 320.0
+detail_height = 256.0
+active_card_height = 80.0
+btn_go_width = 96.0
+btn_panic_width = 96.0
+textarea_height = 64.0
+
+# Icon sizes
+icon_sm = 14.0
+icon_md = 18.0
+
+# Slider Component Geometry
+slider_track_height = 6.0
+slider_thumb_size = 14.0
+
+# Radii
+radius_sm = 3.0
+radius_md = 5.0
+radius_full = 9999.0
+
+[color]
+
+# --- Environment & Surfaces (Dark to Light) ---
+bg_app              = "#181926"  # Base canvas; window background; separator gutters
+bg_surface          = "#1E2030"  # Primary panel surfaces (Main Cuelist, Active Cues panel)
+bg_surface_raised   = "#24273A"  # Slightly elevated surfaces; row zebra-striping (even rows)
+bg_surface_overlay  = "#363A4F"  # Popovers, floating menus, high-elevation surfaces
+
+# --- Interactable "Punch-Down" Elements (Darker than Surface) ---
+element_bg          = "#11121C"  # Default interactable (Darker than bg_app to punch down)
+element_border      = "#363A4F"  # Border to define the element shape
+element_bg_hover    = "#181926"  # Hover state (Lifts slightly towards app bg)
+element_bg_active   = "#090A0F"  # Pressed/Active state (Deepest inset)
+
+# --- Selection & Focus ---
+bg_selection        = "#2F3C5E"  # Background for selected cue row (Subtle blue tint, replaces zebra)
+bg_selection_active = "#405382"  # Background for selected AND focused cue row
+border_focus        = "#8AADF4"  # Focus ring color (Macchiato Blue)
+
+# --- Text & Typography ---
+text_primary        = "#CAD3F5"  # High-contrast body, cue titles, times
+text_secondary      = "#B8C0E0"  # Column headers, cue numbers, inactive tabs, unit labels
+text_disabled       = "#A5ADCB"  # Disabled cues, muted parameters, placeholders
+
+# --- Status & Semantic Colors (Macchiato Palette) ---
+status_playhead     = "#8AADF4"  # Active Playhead indicator / Selection highlight (Blue)
+status_running      = "#A6DA95"  # Active Playing Cue background tint / green glow (Green)
+status_wait         = "#EED49F"  # Pre-Wait / Post-Wait Active (Yellow/Amber)
+status_error        = "#EE99A0"  # Broken Cue / Panic Trigger (Red)
+status_standby      = "#C6A0F6"  # Armed / Standby State (Mauve)
+status_group        = "#F5A97F"  # Group cue indicator border (Peach - matching orange box in image)
+
+# --- Structural Elements ---
+border_subtle       = "#181926"  # Same as bg_app; used to separate panels (creates 'gutters')
+border_divider      = "#363A4F"  # Internal dividers within panels (e.g., column separators, header border)
+border_emphasized   = "#494F6A"  # Emphasized borders (e.g., conductor-next border)
+
+# --- Pre-calculated alpha tints for native GUI translation ---
+status_running_bg   = "#A6DA9526"  # rgba(166, 218, 149, 0.15)
+border_row_divider  = "#18192699"  # rgba(24, 25, 38, 0.60)
+status_playhead_bg  = "#8AADF426"  # rgba(138, 173, 244, 0.15)
+status_running_bg_30 = "#A6DA954D"  # rgba(166, 218, 149, 0.30)
+status_running_bg_20 = "#A6DA9533"  # rgba(166, 218, 149, 0.20)
+status_running_bg_70 = "#A6DA95B3"  # rgba(166, 218, 149, 0.70)
+status_group_bg     = "#F5A97F26"  # rgba(245, 169, 127, 0.15)
+status_error_bg     = "#ED879626"  # rgba(237, 135, 150, 0.15)
+status_error_bg_12  = "#ED87961F"  # rgba(237, 135, 150, 0.12)
+status_group_bg_25  = "#F5A97F40"  # rgba(245, 169, 127, 0.25)
+border_divider_40   = "#18192666"  # rgba(24, 25, 38, 0.40)
+text_disabled_50    = "#A5ADCB80"  # rgba(165, 173, 203, 0.50)
+
+# --- Slider Colors ---
+slider_track        = "#11121C"  # var(--color-element)
+slider_fill         = "#F5A97F"  # var(--color-status-group)
+slider_thumb        = "#CAD3F5"  # var(--color-text-primary)

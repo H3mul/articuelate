@@ -177,7 +177,7 @@ mod tests {
 
     #[test]
     fn parses_dark_toml_with_defaults() {
-        let t = parse_theme(include_str!("../../themes/01-base.toml"));
+        let t = parse_theme(include_str!("../../themes/base.toml"));
         assert_eq!(t.color.bg_app, Color::rgb8(0x18, 0x19, 0x26));
         assert_eq!(t.color.text_primary, Color::rgb8(0xca, 0xd3, 0xf5));
         assert_eq!(t.dim.space_xs, 4.0);
@@ -186,7 +186,7 @@ mod tests {
 
     #[test]
     fn parses_font_style_from_toml() {
-        let t = parse_theme(include_str!("../../themes/01-base.toml"));
+        let t = parse_theme(include_str!("../../themes/base.toml"));
         assert_eq!(t.font.mono_xl.family, "JetBrains Mono");
         assert_eq!(t.font.mono_xl.size, 24.0);
         assert_eq!(t.font.mono_xl.line_height, 30.0);
