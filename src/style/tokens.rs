@@ -45,18 +45,9 @@ impl<'de> DeserializeAs<'de, Color> for ColorParser {
 
 fn de_color<'de, D: serde::Deserializer<'de>>(d: D) -> Result<Color, D::Error> {
     let s = String::deserialize(d)?;
-    hex_to_color(&s).map_err(serde::de::Error::custom)
-}
-
-fn hex_to_color(s: &str) -> Result<Color, String> {
-    let s = s.trim().trim_start_matches('#');
-    if s.len() != 6 {
-        return Err(format!("invalid hex colour `{s}`"));
-    }
-    let r = u8::from_str_radix(&s[0..2], 16).map_err(|_| format!("invalid hex colour `{s}`"))?;
-    let g = u8::from_str_radix(&s[2..4], 16).map_err(|_| format!("invalid hex colour `{s}`"))?;
-    let b = u8::from_str_radix(&s[4..6], 16).map_err(|_| format!("invalid hex colour `{s}`"))?;
-    Ok(Color::rgb8(r, g, b))
+    Color::parse(&s.trim())
+        .ok_or_else(|| format!("invalid colour `{s}`"))
+        .map_err(serde::de::Error::custom)
 }
 
 // --- style structs --------------------------------------------------------

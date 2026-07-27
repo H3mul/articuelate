@@ -158,6 +158,7 @@ pub struct AudioEngine {
     telemetry: Arc<AudioTelemetry>,
     runtime_thread: Option<std::thread::JoinHandle<()>>,
     device_names: Vec<String>,
+    shutdown_tx: Option<tokio::sync::oneshot::Sender<()>>,
 }
 
 impl AudioEngine {
@@ -188,6 +189,8 @@ impl AudioEngine {
             .build()
             .expect("failed to build audio runtime");
 
+        let (shutdown_tx, mut shutdown_rx) = tokio::sync::oneshot::channel::<()>();
+
         let telemetry_for_driver = telemetry.clone();
         let runtime_thread = std::thread::Builder::new()
             .name("articuelate-audio-router".into())
@@ -201,7 +204,7 @@ impl AudioEngine {
                         Box::new(CpalDriver::new(telemetry_for_driver, audio_event_tx))
                     }
                 };
-                runtime.block_on(driver_router(command_rx, driver))
+                runtime.block_on(driver_router(command_rx, driver, &mut shutdown_rx))
             })
             .expect("failed to spawn audio runtime thread");
 
@@ -211,6 +214,7 @@ impl AudioEngine {
             telemetry,
             runtime_thread: Some(runtime_thread),
             device_names,
+            shutdown_tx: Some(shutdown_tx),
         }
     }
 
@@ -253,7 +257,13 @@ impl AudioEngine {
 impl Drop for AudioEngine {
     fn drop(&mut self) {
         debug!("Audio engine shutting down");
+        // Drop the command sender so no new commands arrive.
         self.command_tx.take();
+        // Signal the router thread to shut down (the command channel may still
+        // have a live clone in the spawned ExecutionEngine task).
+        if let Some(tx) = self.shutdown_tx.take() {
+            let _ = tx.send(());
+        }
         if let Some(thread) = self.runtime_thread.take() {
             let _ = thread.join();
         }
@@ -261,33 +271,47 @@ impl Drop for AudioEngine {
     }
 }
 
-async fn driver_router(mut rx: mpsc::Receiver<DSPCommand>, mut driver: Box<dyn AudioDriver>) {
+async fn driver_router(
+    mut rx: mpsc::Receiver<DSPCommand>,
+    mut driver: Box<dyn AudioDriver>,
+    shutdown: &mut tokio::sync::oneshot::Receiver<()>,
+) {
     info!("Audio driver router started");
-    while let Some(command) = rx.recv().await {
-        debug!(?command, "Audio driver received command");
-        let result = match command {
-            DSPCommand::SetAudioDevice { device_name } => driver.set_device(device_name).await,
-            DSPCommand::Play {
-                cue_id,
-                file_path,
-                volume_db,
-                looping,
-            } => {
-                driver
-                    .play_cue(cue_id, file_path, volume_db, looping, None)
-                    .await
+    loop {
+        tokio::select! {
+            command = rx.recv() => {
+                let Some(command) = command else {
+                    info!("Audio driver router stopped (command channel closed)");
+                    return;
+                };
+                let result = match command {
+                    DSPCommand::SetAudioDevice { device_name } => driver.set_device(device_name).await,
+                    DSPCommand::Play {
+                        cue_id,
+                        file_path,
+                        volume_db,
+                        looping,
+                    } => {
+                        driver
+                            .play_cue(cue_id, file_path, volume_db, looping, None)
+                            .await
+                    }
+                    DSPCommand::Seek {
+                        cue_id,
+                        position_sec,
+                    } => driver.seek_cue(cue_id, position_sec).await,
+                    DSPCommand::Pause { cue_id } | DSPCommand::Stop { cue_id } => {
+                        driver.stop_cue(cue_id).await
+                    }
+                };
+                if let Err(error) = result {
+                    error!(%error, "Audio driver command failed");
+                }
             }
-            DSPCommand::Seek {
-                cue_id,
-                position_sec,
-            } => driver.seek_cue(cue_id, position_sec).await,
-            DSPCommand::Pause { cue_id } | DSPCommand::Stop { cue_id } => {
-                driver.stop_cue(cue_id).await
+            _ = &mut *shutdown => {
+                info!("Audio driver router stopped (shutdown signal)");
+                return;
             }
-        };
-        if let Err(error) = result {
-            error!(%error, "Audio driver command failed");
         }
     }
-    info!("Audio driver router stopped");
 }
