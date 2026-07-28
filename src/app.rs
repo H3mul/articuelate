@@ -23,6 +23,7 @@ use crate::audio::{AudioEngine, AudioTelemetry};
 use crate::exec::ExecutionHandle;
 use crate::model::{ExecutionState, Playhead, WorkspaceState};
 use crate::style::{Theme, global_stylesheet, load_theme, theme};
+use crate::ui::panel::PanelSystem;
 use crate::ui::{cuelist, detail, media, status_bar, toolbar};
 
 /// The Floem application and its UI-side execution-state channel.
@@ -132,13 +133,7 @@ impl App {
                     let execution = execution.clone();
                     dyn_container(
                         move || theme_gen.get(),
-                        move |_| {
-                            app_view(
-                                ws.clone(),
-                                exec_state_signal_r,
-                                execution.clone(),
-                            )
-                        },
+                        move |_| app_view(ws.clone(), exec_state_signal_r, execution.clone()),
                     )
                     // Make the base view fill the window
                     .style(|s| s.size_full().min_size(0.0, 0.0))
@@ -218,27 +213,20 @@ fn app_view(
         }
     });
 
-    let status_bar_view = status_bar::view(
-        selected_count_rw.get_untracked(),
-        cue_count,
-    );
+    let status_bar_view = status_bar::view(selected_count_rw.get_untracked(), cue_count);
 
     // Left column: toolbar + cuelist
-    let left_column = v_stack((toolbar_view, cuelist_view))
+    let main_view = v_stack((toolbar_view, cuelist_view))
         .style(|s| s.flex_col().min_width(0.0).flex_grow(1.0).height_full());
 
-    // Main workspace: left column + sidebar (1px gutter between)
-    let main_workspace = v_stack((
-        h_stack((
-            left_column,
-            sidebar_view,
-        ))
-        .style(|s| s.flex_row().flex_grow(1.0).min_height(0.0).height_full().width_full().gap(1.0)),
-        detail_view,
-    ))
-    .style(|s| s.flex_col().flex_grow(1.0).min_height(0.0).height_full().width_full().gap(1.0));
+    let panel = PanelSystem::new()
+        .builder()
+        .with_main(main_view)
+        .with_right(sidebar_view)
+        .with_bottom(detail_view)
+        .build();
 
-    v_stack((main_workspace, status_bar_view))
+    v_stack((panel, status_bar_view))
         .style(|s| {
             s.flex_col()
                 .width_full()
