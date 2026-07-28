@@ -5,61 +5,34 @@
 //! `Arc<Cuelist>` via reactive signals; the execution engine reads from an
 //! `ArcSwap<WorkspaceState>`.
 
+use floem::reactive::{Memo, RwSignal, SignalGet, create_memo};
 use serde::{Deserialize, Serialize};
+use serde_with::{DurationMicroSeconds, serde_as};
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
+use std::time::Duration;
 use uuid::Uuid;
 
-// ─── Core Enums ─────────────────────────────────────────────────────────
+use crate::audio::{AtomicCueMetrics, AudioTelemetry};
 
-/// Kind of cue — determines which tab/target fields are relevant.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub enum CueKind {
-    Audio {
-        file_path: PathBuf,
-        volume: f64,
-        looping: bool,
-        fade_in_sec: f64,
-        fade_out_sec: f64,
-    },
-    Control {
-        target: String,
-        value: String,
-    },
-    Osc {
-        task: String,
-        host: String,
-        port: u16,
-    },
-    Group,
-    Fade {
-        target: String,
-        property: String,
-        target_value: f64,
-        duration_sec: f64,
-    },
+// ─── Foundation Types ───────────────────────────────────────────────────
+// Lowest-level types with no (or minimal) local dependencies.
+
+#[derive(Debug, Clone, Copy, Eq, PartialEq, Hash, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct CueId(Uuid);
+
+impl CueId {
+    pub fn new() -> Self {
+        Self(Uuid::now_v7())
+    }
 }
 
-/// Visual state of a cue for the UI.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
-pub enum CueState {
-    #[default]
-    Idle,
-    Standby,
-    Running,
-}
-
-/// How a cue advances to the next one in the chain.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
-pub enum TriggerCondition {
-    /// Cue triggers when the playhead reaches it
-    #[default]
-    Playhead,
-    /// Cue triggers together with a target cue
-    WithCue,
-    /// Cue triggers after the target cue (when it finishes)
-    AfterCue,
+impl std::fmt::Display for CueId {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.0)
+    }
 }
 
 /// Highlight colour swatch for a cue row.
@@ -88,105 +61,63 @@ impl CueColor {
     }
 }
 
-/// Fade state for the active cue row.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub enum FadeState {
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+pub enum TriggerCondition {
+    /// Cue triggers when the playhead reaches it
     #[default]
-    None,
-    In,
-    Out,
+    Playhead,
+    /// Cue triggers together with a target cue
+    WithCue { target: CueId },
+    /// Cue triggers after the target cue (when it finishes)
+    AfterCue { target: CueId },
 }
 
-// ─── Core Types ─────────────────────────────────────────────────────────
+// ─── Core Cue Model ─────────────────────────────────────────────────────
+// The cue itself and the collection that holds cues.
 
-#[derive(Debug, Clone, Copy, Eq, PartialEq, Hash, Serialize, Deserialize)]
-#[serde(transparent)]
-pub struct CueId(Uuid);
-
-impl CueId {
-    pub fn new() -> Self {
-        Self(Uuid::now_v7())
-    }
-}
-
-impl std::fmt::Display for CueId {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.0)
-    }
+/// Kind of cue — determines which tab/target fields are relevant.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub enum CueKind {
+    Audio {
+        file_path: PathBuf,
+        volume: f64,
+        looping: bool,
+        fade_in_sec: f64,
+        fade_out_sec: f64,
+    },
+    // Control {
+    //     target: String,
+    //     value: String,
+    // },
+    // Osc {
+    //     task: String,
+    //     host: String,
+    //     port: u16,
+    // },
+    // Group,
+    // Fade {
+    //     target: String,
+    //     property: String,
+    //     target_value: f64,
+    //     duration_sec: f64,
+    // },
 }
 
 /// A single cue in the show file.
+#[serde_as]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Cue {
     pub id: CueId,
-    pub number: String,
     pub name: String,
     pub notes: String,
-    /// Display string for the target/media summary in the list (e.g. "audio · file.wav")
-    pub target: String,
     pub kind: CueKind,
     pub trigger_condition: TriggerCondition,
-    /// Cue number this trigger references (for WithCue / AfterCue)
-    pub trigger_target: Option<String>,
-    pub pre_wait: String,
-    pub duration: String,
-    pub post_wait: String,
-    /// Indentation depth for sub-cues (0 = top-level)
-    pub depth: usize,
-    pub state: CueState,
+    #[serde_as(as = "DurationMicroSeconds<u64>")]
+    pub pre_wait: Duration,
+    #[serde_as(as = "DurationMicroSeconds<u64>")]
+    pub post_wait: Duration,
     pub color: CueColor,
-    /// Media file path — only meaningful for Audio cues
-    pub media_file: Option<String>,
-    /// Target output volume 0-1 — only meaningful for Audio cues
-    pub volume: f64,
-    /// Progress 0-1, only relevant while running
-    pub progress: Option<f64>,
-    /// Pre-delay progress 0-1 while the cue is counting into playback
-    pub pre_progress: Option<f64>,
-    /// Post-delay progress 0-1 while the cue is winding down
-    pub post_progress: Option<f64>,
 }
-
-impl Cue {
-    pub fn new_music(
-        number: impl Into<String>,
-        name: impl Into<String>,
-        notes: impl Into<String>,
-        file_path: PathBuf,
-        volume: f64,
-        duration: impl Into<String>,
-    ) -> Self {
-        Self {
-            id: CueId::new(),
-            number: number.into(),
-            name: name.into(),
-            notes: notes.into(),
-            target: format!("audio · {}", file_path.file_name().unwrap_or_default().to_string_lossy()),
-            kind: CueKind::Audio {
-                file_path,
-                volume,
-                looping: false,
-                fade_in_sec: 0.0,
-                fade_out_sec: 0.0,
-            },
-            trigger_condition: TriggerCondition::Playhead,
-            trigger_target: None,
-            pre_wait: "00:00".into(),
-            duration: duration.into(),
-            post_wait: "00:00".into(),
-            depth: 0,
-            state: CueState::Idle,
-            color: CueColor::None,
-            media_file: None,
-            volume,
-            progress: None,
-            pre_progress: None,
-            post_progress: None,
-        }
-    }
-}
-
-// ─── Cuelist ────────────────────────────────────────────────────────────
 
 /// The flat cue chain — a strict ordering of cues plus a key-value map.
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
@@ -246,14 +177,25 @@ impl Cuelist {
     }
 }
 
-// ─── Workspace ──────────────────────────────────────────────────────────
+// ─── Runtime / Execution ────────────────────────────────────────────────
+// Ephemeral playback state that lives outside the persisted show file.
 
-#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
-pub struct WorkspaceState {
-    pub cuelist: Arc<Cuelist>,
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
+pub enum PlaybackStatus {
+    #[default]
+    Idle,
+    Standby,
+    Playing,
+    Paused,
+    Error,
 }
 
-// ─── Execution State ────────────────────────────────────────────────────
+#[derive(Debug, Clone, PartialEq, Default)]
+pub struct CueExecutionState {
+    pub status: PlaybackStatus,
+    pub pre_wait_elapsed: Duration,
+    pub post_wait_elapsed: Duration,
+}
 
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub enum Playhead {
@@ -265,28 +207,75 @@ pub enum Playhead {
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct ExecutionState {
     pub playhead: Playhead,
-    /// The currently-running cue IDs (for the runtime sidebar)
-    pub running_cues: Vec<CueId>,
+    pub cue_execution_state: im::HashMap<CueId, CueExecutionState>,
 }
 
-// ─── Active Cue (Runtime Sidebar) ───────────────────────────────────────
+// ─── Application State ──────────────────────────────────────────────────
+// Persistent + transient state wired together for the UI and engine.
 
-/// A cue that has been triggered and is still playing back.
-#[derive(Debug, Clone)]
-pub struct ActiveCue {
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct WorkspaceState {
+    pub cuelist: Arc<Cuelist>,
+}
+
+#[derive(Clone)]
+pub struct AppState {
+    // The source of truth for order and configuration
+    pub workspace: RwSignal<WorkspaceState>,
+
+    // The ephemeral runtime data
+    pub execution: RwSignal<ExecutionState>,
+
+    // Audio telemetry for monitoring audio levels and playback status
+    pub audio_telemetry: Arc<AudioTelemetry>,
+
+    // UI-specific selections
+    pub selected_cue: RwSignal<Option<CueId>>,
+}
+
+/// A transient type to join workspace and runtime state for a cue for UI rendering.
+#[derive(Clone)]
+pub struct TransientCueState {
     pub id: CueId,
-    pub number: String,
-    pub name: String,
-    pub file: String,
-    pub elapsed: f64,
-    pub remaining: f64,
-    pub duration: f64,
-    pub progress: f64,
-    pub color: CueColor,
-    pub level: f64,
+    pub workspace: Memo<Arc<Cue>>,
+    pub execution: Memo<CueExecutionState>,
+    pub audio_telemetry: Arc<AudioTelemetry>,
 }
 
-// ─── Sample Data ────────────────────────────────────────────────────────
+impl TransientCueState {
+    pub fn new(id: CueId, app_state: AppState) -> Option<Self> {
+        let initial_cue = app_state.workspace.get().cuelist.get_cue(id)?.clone();
+
+        Some(Self {
+            id,
+            workspace: create_memo(move |_| {
+                app_state
+                    .workspace
+                    .get()
+                    .cuelist
+                    .get_cue(id)
+                    .cloned()
+                    .unwrap_or_else(|| initial_cue.clone())
+            }),
+            execution: create_memo(move |_| {
+                app_state
+                    .execution
+                    .get()
+                    .cue_execution_state
+                    .get(&id)
+                    .cloned()
+                    .unwrap_or_default()
+            }),
+            audio_telemetry: app_state.audio_telemetry.clone(),
+        })
+    }
+
+    pub fn read_audio_telemetry(&self) -> Arc<AtomicCueMetrics> {
+        self.audio_telemetry.clone().metrics_for(self.id)
+    }
+}
+
+// ─── Sample Data & Constants ────────────────────────────────────────────
 
 /// Build a sample show matching the prototype's CUE_DATA.
 pub fn sample_cues() -> Vec<Cue> {
@@ -513,20 +502,3 @@ pub fn sample_active_cues() -> Vec<ActiveCue> {
         },
     ]
 }
-
-/// The cue currently on the playhead and the one queued next.
-pub struct ConductorCues {
-    pub current_number: &'static str,
-    pub current_name: &'static str,
-    pub next_number: &'static str,
-    pub next_name: &'static str,
-    pub next_notes: &'static str,
-}
-
-pub const CONDUCTOR_CUES: ConductorCues = ConductorCues {
-    current_number: "3",
-    current_name: "Thunderclap",
-    next_number: "4",
-    next_name: "Rain Ambience",
-    next_notes: "Loop through the storm scene.",
-};

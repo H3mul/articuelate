@@ -35,9 +35,7 @@ use crate::model::{CueKind, ExecutionState, Playhead, WorkspaceState};
 /// future UI events (Pause, Panic, Scrub, …).
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum UiEvent {
-    /// The operator pressed GO.
     Go,
-    /// The operator pressed Panic (stop all).
     Panic,
     SetAudioDevice(String),
 }
