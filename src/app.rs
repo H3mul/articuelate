@@ -9,29 +9,30 @@ use crossbeam_channel::Receiver;
 use floem::ext_event::create_signal_from_channel;
 
 use floem::reactive::{
-    ReadSignal, RwSignal, SignalGet, SignalUpdate, SignalWith, create_effect, create_memo,
-    create_rw_signal, provide_context,
+    ReadSignal, RwSignal, SignalGet, SignalUpdate, create_effect, create_memo, create_rw_signal,
+    provide_context,
 };
-use floem::views::{Decorators, dyn_container, h_stack, v_stack};
+use floem::views::{Decorators, dyn_container, v_stack};
 use floem::window::WindowConfig;
 use floem::{Application, IntoView};
 
 use tokio::sync::watch;
 use tracing::{debug, info};
 
-use crate::audio::{AudioEngine, AudioTelemetry};
+use crate::audio::AudioEngine;
 use crate::exec::ExecutionHandle;
-use crate::model::{ExecutionState, Playhead, WorkspaceState};
+use crate::model::{
+    AppState, ExecutionState, PlaybackStatus, Playhead, TransientCueState, WorkspaceState,
+};
 use crate::style::{Theme, global_stylesheet, load_theme, theme};
 use crate::ui::panel::PanelSystem;
 use crate::ui::{cuelist, detail, media, status_bar, toolbar};
 
 /// The Floem application and its UI-side execution-state channel.
 pub struct App {
-    workspace: Arc<ArcSwap<WorkspaceState>>,
+    app_state: AppState,
     exec_state_rx: Receiver<Arc<ExecutionState>>,
     execution: ExecutionHandle,
-    telemetry: Option<Arc<AudioTelemetry>>,
     audio_engine: Arc<AudioEngine>,
     theme_signal: RwSignal<Theme>,
     theme_rx: crossbeam_channel::Receiver<Theme>,
@@ -42,6 +43,10 @@ impl App {
     ///
     /// The returned future is intended to be spawned on the shared Tokio runtime
     /// via `handle.spawn(forwarder)`, keeping `main.rs` free of crossbeam/Floem details.
+    ///
+    /// `App::new` is responsible for assembling the unified `AppState` from the
+    /// raw communication channels provided by `main.rs`. This keeps the UI domain
+    /// self-contained.
     pub fn new(
         workspace: Arc<ArcSwap<WorkspaceState>>,
         exec_state_rx: watch::Receiver<Arc<ExecutionState>>,
@@ -52,6 +57,7 @@ impl App {
         impl Future<Output = ()> + Send + 'static,
         crossbeam_channel::Sender<Theme>,
     ) {
+        // ── Bridge execution state from tokio watch → crossbeam → Floem signal ──
         let (ui_exec_state_tx, ui_exec_state_rx) = crossbeam_channel::unbounded();
         let mut exec_state_r = exec_state_rx;
         let initial_val = exec_state_r.borrow().clone();
@@ -69,15 +75,26 @@ impl App {
             info!("Execution state forwarder stopped");
         };
 
+        // ── Theme reload channel ──
         let (theme_tx, theme_rx) = crossbeam_channel::unbounded();
         let theme_signal = create_rw_signal(load_theme());
 
+        // ── Assemble AppState from the channels ──
+        let workspace_state = workspace.load_full();
+        let telemetry = audio_engine.telemetry();
+        let sample_exec = crate::model::sample_execution_state(&workspace_state.cuelist);
+        let app_state = AppState {
+            workspace: RwSignal::new(workspace_state.as_ref().clone()),
+            execution: RwSignal::new(sample_exec),
+            audio_telemetry: telemetry,
+            selected_cue: RwSignal::new(None),
+        };
+
         (
             Self {
-                workspace,
+                app_state,
                 exec_state_rx: ui_exec_state_rx,
                 execution,
-                telemetry: Some(audio_engine.telemetry()),
                 audio_engine,
                 theme_signal,
                 theme_rx,
@@ -89,10 +106,9 @@ impl App {
 
     pub fn run(self) {
         let Self {
-            workspace,
+            app_state,
             exec_state_rx,
             execution,
-            telemetry: _,
             audio_engine,
             theme_signal,
             theme_rx,
@@ -129,11 +145,11 @@ impl App {
                         }
                     });
 
-                    let ws = workspace.clone();
-                    let execution = execution.clone();
+                    let state = app_state.clone();
+                    let exec = execution.clone();
                     dyn_container(
                         move || theme_gen.get(),
-                        move |_| app_view(ws.clone(), exec_state_signal_r, execution.clone()),
+                        move |_| app_view(state.clone(), exec_state_signal_r, exec.clone()),
                     )
                     // Make the base view fill the window
                     .style(|s| s.size_full().min_size(0.0, 0.0))
@@ -150,69 +166,98 @@ impl App {
     }
 }
 
-/// Apply a mutation to the workspace on the UI thread.
-///
-/// The `RwSignal` is the single source of truth for the UI: writing it notifies
-/// every subscriber (cuelist, detail, toolbar). The `ArcSwap` is the engine's
-/// read path: `store` publishes the new `Arc<WorkspaceState>` so the next time
-/// the Execution Engine reads it (e.g. on `Go`), it sees the latest edits —
-/// without locking or copying the cue list.
-#[allow(dead_code)]
-fn update_workspace(
-    signal: RwSignal<Arc<WorkspaceState>>,
-    shared: &Arc<ArcSwap<WorkspaceState>>,
-    f: impl FnOnce(&mut WorkspaceState),
-) {
-    let mut next = signal.get().as_ref().clone();
-    f(&mut next);
-    let next = Arc::new(next);
-    signal.set(next.clone());
-    shared.store(next);
-}
-
 fn app_view(
-    workspace: Arc<ArcSwap<WorkspaceState>>,
+    app_state: AppState,
     exec_state: ReadSignal<Option<Arc<ExecutionState>>>,
     execution: ExecutionHandle,
 ) -> impl IntoView {
-    let workspace_signal: RwSignal<Arc<WorkspaceState>> = create_rw_signal(workspace.load_full());
-    let cuelist_memo = create_memo(move |_| workspace_signal.with(|ws| ws.cuelist.clone()));
+    // ── Derive memoised signals from AppState ──
+    let cuelist_memo = {
+        let s = app_state.clone();
+        create_memo(move |_| s.workspace.get().cuelist.clone())
+    };
 
-    let selected = create_rw_signal(None);
-    let active_cue = create_rw_signal(None);
-
-    // Wire execution state to active/selected signals
+    // Wire execution state from the watch channel into the AppState signal
     {
-        let act = active_cue;
-        let sel = selected;
+        let s = app_state.clone();
         create_effect(move |_| {
             if let Some(state) = exec_state.get() {
-                let p = match state.playhead {
-                    Playhead::Stopped => None,
-                    Playhead::Playing(id) => Some(id),
-                };
-                act.set(p);
-                sel.set(p);
+                s.execution.set(state.as_ref().clone());
             }
         });
     }
 
-    let cuelist_view = cuelist::view(cuelist_memo, selected, active_cue);
-    let toolbar_view = toolbar::view(execution);
-    let detail_view = detail::view(selected, cuelist_memo);
-    let sidebar_view = media::view();
+    // ── Build a TransientCueState for the currently selected cue ──
+    let selected_transient = {
+        let s = app_state.clone();
+        create_memo(move |_| s.selected_cue.get().and_then(|id| s.cue_state(id)))
+    };
+
+    // ── Build TransientCueState for the active (playing) cue ──
+    let active_transient = {
+        let s = app_state.clone();
+        create_memo(move |_| {
+            let playhead_id = match s.execution.get().playhead {
+                Playhead::Stopped => None,
+                Playhead::Playing(id) => Some(id),
+            };
+            playhead_id.and_then(|id| s.cue_state(id))
+        })
+    };
+
+    // ── Build TransientCueState for the next cue (after playhead) ──
+    let next_transient = {
+        let s = app_state.clone();
+        create_memo(move |_| {
+            let next_id = match s.execution.get().playhead {
+                Playhead::Stopped => None,
+                Playhead::Playing(current_id) => {
+                    let cuelist = s.workspace.get().cuelist;
+                    cuelist
+                        .iter_after(current_id)
+                        .and_then(|mut it| it.next().map(|cue| cue.id))
+                }
+            };
+            next_id.and_then(|id| s.cue_state(id))
+        })
+    };
+
+    // ── Running cues for the media sidebar ──
+    let running_transients = {
+        let s = app_state.clone();
+        create_memo(move |_| {
+            let exec = s.execution.get();
+            let mut running: Vec<TransientCueState> = Vec::new();
+            for (id, ces) in exec.cue_execution_state.iter() {
+                if ces.status == PlaybackStatus::Playing || ces.status == PlaybackStatus::Standby {
+                    if let Some(tcs) = s.cue_state(*id) {
+                        running.push(tcs);
+                    }
+                }
+            }
+            running
+        })
+    };
+
     let cue_count = cuelist_memo.get().len();
     let selected_count_rw = create_rw_signal(0usize);
 
     // Track selected count
-    create_effect(move |_| {
-        if selected.get().is_some() {
-            selected_count_rw.set(1);
-        } else {
-            selected_count_rw.set(0);
-        }
-    });
+    {
+        let s = app_state.clone();
+        create_effect(move |_| {
+            if s.selected_cue.get().is_some() {
+                selected_count_rw.set(1);
+            } else {
+                selected_count_rw.set(0);
+            }
+        });
+    }
 
+    let cuelist_view = cuelist::view(cuelist_memo, app_state.clone());
+    let toolbar_view = toolbar::view(execution, active_transient, next_transient);
+    let detail_view = detail::view(selected_transient);
+    let sidebar_view = media::view(running_transients);
     let status_bar_view = status_bar::view(selected_count_rw.get_untracked(), cue_count);
 
     // Left column: toolbar + cuelist

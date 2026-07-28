@@ -72,6 +72,17 @@ pub enum TriggerCondition {
     AfterCue { target: CueId },
 }
 
+impl TriggerCondition {
+    /// Discriminant tag for UI selectors that don't need the target.
+    pub fn discriminant_tag(&self) -> u8 {
+        match self {
+            TriggerCondition::Playhead => 0,
+            TriggerCondition::WithCue { .. } => 1,
+            TriggerCondition::AfterCue { .. } => 2,
+        }
+    }
+}
+
 // ─── Core Cue Model ─────────────────────────────────────────────────────
 // The cue itself and the collection that holds cues.
 
@@ -85,22 +96,50 @@ pub enum CueKind {
         fade_in_sec: f64,
         fade_out_sec: f64,
     },
-    // Control {
-    //     target: String,
-    //     value: String,
-    // },
-    // Osc {
-    //     task: String,
-    //     host: String,
-    //     port: u16,
-    // },
-    // Group,
-    // Fade {
-    //     target: String,
-    //     property: String,
-    //     target_value: f64,
-    //     duration_sec: f64,
-    // },
+    Group,
+    Control {
+        target: String,
+        value: String,
+    },
+    Osc {
+        task: String,
+        host: String,
+        port: u16,
+    },
+    Fade {
+        target: String,
+        property: String,
+        target_value: f64,
+        duration_sec: f64,
+    },
+}
+
+impl CueKind {
+    /// Human-readable target label for the cuelist "TARGET" column.
+    pub fn target_label(&self) -> String {
+        match self {
+            CueKind::Audio { file_path, .. } => {
+                format!(
+                    "audio · {}",
+                    file_path.file_name().unwrap_or_default().to_string_lossy()
+                )
+            }
+            CueKind::Group => "group".to_string(),
+            CueKind::Control { target, value } => format!("control · {}:{}", target, value),
+            CueKind::Osc { host, port, .. } => format!("osc · {}:{}", host, port),
+            CueKind::Fade {
+                target, property, ..
+            } => format!("fade · {}:{}", target, property),
+        }
+    }
+
+    /// The media file path, if this is an audio cue.
+    pub fn media_file(&self) -> Option<&PathBuf> {
+        match self {
+            CueKind::Audio { file_path, .. } => Some(file_path),
+            _ => None,
+        }
+    }
 }
 
 /// A single cue in the show file.
@@ -233,6 +272,13 @@ pub struct AppState {
     pub selected_cue: RwSignal<Option<CueId>>,
 }
 
+impl AppState {
+    /// Convenience helper to assemble a transient view model for a cue
+    pub fn cue_state(&self, id: CueId) -> Option<TransientCueState> {
+        TransientCueState::new(id, self.clone())
+    }
+}
+
 /// A transient type to join workspace and runtime state for a cue for UI rendering.
 #[derive(Clone)]
 pub struct TransientCueState {
@@ -240,6 +286,12 @@ pub struct TransientCueState {
     pub workspace: Memo<Arc<Cue>>,
     pub execution: Memo<CueExecutionState>,
     pub audio_telemetry: Arc<AudioTelemetry>,
+}
+
+impl PartialEq for TransientCueState {
+    fn eq(&self, other: &Self) -> bool {
+        self.id == other.id
+    }
 }
 
 impl TransientCueState {
@@ -275,87 +327,31 @@ impl TransientCueState {
     }
 }
 
-// ─── Sample Data & Constants ────────────────────────────────────────────
+// ─── Sample Data ────────────────────────────────────────────────────────
 
-/// Build a sample show matching the prototype's CUE_DATA.
+/// Build a sample show file with a variety of cue kinds.
 pub fn sample_cues() -> Vec<Cue> {
     vec![
         Cue {
             id: CueId::new(),
-            number: "1".into(),
             name: "Preshow Music".into(),
             notes: "House playlist — start 30 min before doors.".into(),
-            target: "group · 2 cues".into(),
-            kind: CueKind::Group,
+            kind: CueKind::Audio {
+                file_path: PathBuf::from("preshow_loop.wav"),
+                volume: 0.7,
+                looping: true,
+                fade_in_sec: 3.0,
+                fade_out_sec: 5.0,
+            },
             trigger_condition: TriggerCondition::Playhead,
-            trigger_target: None,
-            pre_wait: "00:00".into(),
-            duration: "12:00".into(),
-            post_wait: "00:00".into(),
-            depth: 0,
-            state: CueState::Idle,
+            pre_wait: Duration::ZERO,
+            post_wait: Duration::ZERO,
             color: CueColor::Orange,
-            media_file: None,
-            volume: 0.7,
-            progress: None,
-            pre_progress: None,
-            post_progress: None,
         },
         Cue {
             id: CueId::new(),
-            number: "1.1".into(),
-            name: "Volume Down".into(),
-            notes: "Dim house to 50% as music settles.".into(),
-            target: "universe 1 · ch 12".into(),
-            kind: CueKind::Control {
-                target: "universe 1".into(),
-                value: "ch 12".into(),
-            },
-            trigger_condition: TriggerCondition::WithCue,
-            trigger_target: Some("1".into()),
-            pre_wait: "00:02".into(),
-            duration: "00:03".into(),
-            post_wait: "00:00".into(),
-            depth: 1,
-            state: CueState::Idle,
-            color: CueColor::None,
-            media_file: None,
-            volume: 0.0,
-            progress: None,
-            pre_progress: None,
-            post_progress: None,
-        },
-        Cue {
-            id: CueId::new(),
-            number: "1.2".into(),
-            name: "Send OSC · Projector On".into(),
-            notes: "/projector/power 1".into(),
-            target: "osc · 10.0.0.42".into(),
-            kind: CueKind::Osc {
-                task: "/projector/power 1".into(),
-                host: "10.0.0.42".into(),
-                port: 3333,
-            },
-            trigger_condition: TriggerCondition::AfterCue,
-            trigger_target: Some("1.1".into()),
-            pre_wait: "00:00".into(),
-            duration: "00:00".into(),
-            post_wait: "00:00".into(),
-            depth: 1,
-            state: CueState::Idle,
-            color: CueColor::None,
-            media_file: None,
-            volume: 0.0,
-            progress: None,
-            pre_progress: None,
-            post_progress: None,
-        },
-        Cue {
-            id: CueId::new(),
-            number: "2".into(),
             name: "Act 1 Intro".into(),
             notes: "Fade in under the announcement.".into(),
-            target: "audio · act1_intro.wav".into(),
             kind: CueKind::Audio {
                 file_path: PathBuf::from("act1_intro.wav"),
                 volume: 0.85,
@@ -364,25 +360,14 @@ pub fn sample_cues() -> Vec<Cue> {
                 fade_out_sec: 3.0,
             },
             trigger_condition: TriggerCondition::Playhead,
-            trigger_target: None,
-            pre_wait: "00:00".into(),
-            duration: "00:45".into(),
-            post_wait: "00:02".into(),
-            depth: 0,
-            state: CueState::Idle,
+            pre_wait: Duration::ZERO,
+            post_wait: Duration::from_secs(2),
             color: CueColor::Blue,
-            media_file: Some("act1_intro.wav".into()),
-            volume: 0.85,
-            progress: None,
-            pre_progress: None,
-            post_progress: None,
         },
         Cue {
             id: CueId::new(),
-            number: "3".into(),
             name: "Thunderclap".into(),
             notes: "Hard hit on the lightning flash.".into(),
-            target: "audio · thunder_01.wav".into(),
             kind: CueKind::Audio {
                 file_path: PathBuf::from("thunder_01.wav"),
                 volume: 1.0,
@@ -391,25 +376,14 @@ pub fn sample_cues() -> Vec<Cue> {
                 fade_out_sec: 0.0,
             },
             trigger_condition: TriggerCondition::Playhead,
-            trigger_target: None,
-            pre_wait: "00:03".into(),
-            duration: "00:06".into(),
-            post_wait: "00:00".into(),
-            depth: 0,
-            state: CueState::Standby,
+            pre_wait: Duration::from_secs(3),
+            post_wait: Duration::ZERO,
             color: CueColor::None,
-            media_file: Some("thunder_01.wav".into()),
-            volume: 1.0,
-            progress: None,
-            pre_progress: Some(0.6),
-            post_progress: None,
         },
         Cue {
             id: CueId::new(),
-            number: "4".into(),
             name: "Rain Ambience".into(),
             notes: "Loop through the storm scene.".into(),
-            target: "audio · rain_loop.wav".into(),
             kind: CueKind::Audio {
                 file_path: PathBuf::from("rain_loop.wav"),
                 volume: 0.62,
@@ -418,25 +392,14 @@ pub fn sample_cues() -> Vec<Cue> {
                 fade_out_sec: 0.0,
             },
             trigger_condition: TriggerCondition::Playhead,
-            trigger_target: None,
-            pre_wait: "00:00".into(),
-            duration: "04:30".into(),
-            post_wait: "00:00".into(),
-            depth: 0,
-            state: CueState::Running,
+            pre_wait: Duration::ZERO,
+            post_wait: Duration::ZERO,
             color: CueColor::Green,
-            media_file: Some("rain_loop.wav".into()),
-            volume: 0.62,
-            progress: Some(0.42),
-            pre_progress: None,
-            post_progress: None,
         },
         Cue {
             id: CueId::new(),
-            number: "4.1".into(),
             name: "Distant Rumble".into(),
             notes: "Under-bed rumble, triggered with rain.".into(),
-            target: "audio · rumble_lo.wav".into(),
             kind: CueKind::Audio {
                 file_path: PathBuf::from("rumble_lo.wav"),
                 volume: 0.4,
@@ -444,61 +407,63 @@ pub fn sample_cues() -> Vec<Cue> {
                 fade_in_sec: 0.0,
                 fade_out_sec: 0.0,
             },
-            trigger_condition: TriggerCondition::WithCue,
-            trigger_target: Some("4".into()),
-            pre_wait: "00:00".into(),
-            duration: "06:00".into(),
-            post_wait: "00:00".into(),
-            depth: 1,
-            state: CueState::Running,
+            trigger_condition: TriggerCondition::Playhead,
+            pre_wait: Duration::ZERO,
+            post_wait: Duration::ZERO,
             color: CueColor::None,
-            media_file: Some("rumble_lo.wav".into()),
-            volume: 0.4,
-            progress: Some(0.31),
-            pre_progress: None,
-            post_progress: None,
+        },
+        Cue {
+            id: CueId::new(),
+            name: "Curtain Call".into(),
+            notes: "Final bows and exit music.".into(),
+            kind: CueKind::Audio {
+                file_path: PathBuf::from("curtain_call.wav"),
+                volume: 0.9,
+                looping: false,
+                fade_in_sec: 1.0,
+                fade_out_sec: 4.0,
+            },
+            trigger_condition: TriggerCondition::Playhead,
+            pre_wait: Duration::from_secs(5),
+            post_wait: Duration::ZERO,
+            color: CueColor::Purple,
         },
     ]
 }
 
-/// Sample active cues for the runtime sidebar.
-pub fn sample_active_cues() -> Vec<ActiveCue> {
-    vec![
-        ActiveCue {
-            id: CueId::new(),
-            number: "4".into(),
-            name: "Rain Ambience".into(),
-            file: "rain_loop.wav".into(),
-            elapsed: 113.0,
-            remaining: 157.0,
-            duration: 270.0,
-            progress: 0.42,
-            color: CueColor::Green,
-            level: 0.54,
-        },
-        ActiveCue {
-            id: CueId::new(),
-            number: "4.1".into(),
-            name: "Distant Rumble".into(),
-            file: "rumble_lo.wav".into(),
-            elapsed: 111.0,
-            remaining: 249.0,
-            duration: 360.0,
-            progress: 0.31,
-            color: CueColor::None,
-            level: 0.33,
-        },
-        ActiveCue {
-            id: CueId::new(),
-            number: "2".into(),
-            name: "Act 1 Intro".into(),
-            file: "act1_intro.wav".into(),
-            elapsed: 38.0,
-            remaining: 7.0,
-            duration: 45.0,
-            progress: 0.84,
-            color: CueColor::Blue,
-            level: 0.78,
-        },
-    ]
+/// Build a sample execution state with some cues marked as playing / standby.
+pub fn sample_execution_state(cuelist: &Cuelist) -> ExecutionState {
+    let mut cue_execution_state: im::HashMap<CueId, CueExecutionState> = im::HashMap::new();
+
+    // Mark the first few cues with interesting states
+    for (i, cue) in cuelist.iter().enumerate() {
+        let status = match i {
+            0 => PlaybackStatus::Playing, // Preshow Music — running
+            1 => PlaybackStatus::Standby, // Act 1 Intro — standby
+            2 => PlaybackStatus::Idle,    // Thunderclap — idle
+            3 => PlaybackStatus::Playing, // Rain Ambience — running
+            4 => PlaybackStatus::Playing, // Distant Rumble — running
+            _ => PlaybackStatus::Idle,
+        };
+        cue_execution_state.insert(
+            cue.id,
+            CueExecutionState {
+                status,
+                pre_wait_elapsed: Duration::ZERO,
+                post_wait_elapsed: Duration::ZERO,
+            },
+        );
+    }
+
+    // Playhead on Thunderclap (index 2)
+    let playhead = cuelist
+        .iter()
+        .nth(2)
+        .map(|cue| Playhead::Playing(cue.id))
+        .unwrap_or(Playhead::Stopped);
+
+    ExecutionState {
+        playhead,
+        cue_execution_state,
+    }
 }

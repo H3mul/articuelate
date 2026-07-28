@@ -4,7 +4,7 @@
 
 use floem::IntoView;
 use floem::event::EventPropagation;
-use floem::reactive::{RwSignal, SignalGet, SignalUpdate, SignalWith, create_memo};
+use floem::reactive::{SignalGet, SignalUpdate, SignalWith, create_memo};
 use floem::style::AlignItems;
 use floem::views::{
     Decorators, VirtualDirection, VirtualItemSize, container, empty, h_stack, label, scroll, text,
@@ -13,17 +13,15 @@ use floem::views::{
 
 use std::sync::Arc;
 
-use crate::model::{Cue, CueColor, CueId, CueKind, CueState, Cuelist};
+use crate::model::{AppState, CueColor, CueKind, Cuelist, PlaybackStatus, TransientCueState};
 use crate::style::theme;
 use crate::ui::icons::{AppIcon, app_icon};
 
-fn microtime(mmss: &str) -> String {
-    if let Some((m, s)) = mmss.split_once(':') {
-        let m_int: usize = m.parse().unwrap_or(0);
-        format!("{}:{}.00", m_int, s)
-    } else {
-        mmss.to_string()
-    }
+fn fmt_duration(d: std::time::Duration) -> String {
+    let total_secs = d.as_secs();
+    let m = total_secs / 60;
+    let s = total_secs % 60;
+    format!("{:02}:{:02}", m, s)
 }
 
 fn strip_type(target: &str) -> String {
@@ -72,9 +70,6 @@ fn time_cell(value: String, fill: Option<f64>, running: bool) -> impl IntoView {
             .border_radius(theme().dim.radius_sm);
 
         if has_fill {
-            // Use a linear-style fill: set background with a clip
-            // Floem doesn't support partial fills natively, so we'll
-            // use a simple background color for the fill state
             s = s.background(theme().color.status_running_bg_30);
         }
         if running {
@@ -84,16 +79,13 @@ fn time_cell(value: String, fill: Option<f64>, running: bool) -> impl IntoView {
     })
 }
 
-fn cue_row(
-    position: usize,
-    id: CueId,
-    cue: Arc<Cue>,
-    selected: RwSignal<Option<CueId>>,
-    active_cue: RwSignal<Option<CueId>>,
-) -> impl IntoView {
-    let is_running = active_cue.get() == Some(id);
-    let is_selected = selected.get() == Some(id);
-    let is_standby = cue.state == CueState::Standby;
+fn cue_row(position: usize, tcs: TransientCueState, app_state: AppState) -> impl IntoView {
+    let id = tcs.id;
+    let cue = tcs.workspace.get();
+    let exec = tcs.execution.get();
+
+    let is_running = exec.status == PlaybackStatus::Playing;
+    let is_standby = exec.status == PlaybackStatus::Standby;
     let is_group = matches!(cue.kind, CueKind::Group);
     let stripe_color = match cue.color {
         CueColor::None => None,
@@ -105,16 +97,46 @@ fn cue_row(
     };
 
     let name = cue.name.clone();
-    let number = cue.number.clone();
-    let target = strip_type(&cue.target);
+    let number = app_state
+        .workspace
+        .get()
+        .cuelist
+        .position_of(id)
+        .map(|n| n.to_string())
+        .unwrap_or_else(|| "?".to_string());
+    let target = strip_type(&cue.kind.target_label());
     let kind = cue.kind.clone();
-    let pre_wait = microtime(&cue.pre_wait);
-    let duration = microtime(&cue.duration);
-    let post_wait = microtime(&cue.post_wait);
+    let pre_wait = fmt_duration(cue.pre_wait);
+    let post_wait = fmt_duration(cue.post_wait);
 
-    let pre_progress = cue.pre_progress;
-    let progress = cue.progress;
-    let post_progress = cue.post_progress;
+    // Duration derived from audio telemetry when running
+    let duration_label = {
+        let metrics = tcs.read_audio_telemetry();
+        let dur = metrics.total_duration_sec();
+        if dur > 0.0 {
+            fmt_duration(std::time::Duration::from_secs_f64(dur))
+        } else {
+            "00:00".to_string()
+        }
+    };
+
+    // Progress fill from telemetry
+    let progress_fill = {
+        let metrics = tcs.read_audio_telemetry();
+        let dur = metrics.total_duration_sec();
+        if dur > 0.0 {
+            Some(metrics.current_time_sec() / dur)
+        } else {
+            None
+        }
+    };
+
+    // Pre-wait progress from execution state
+    let pre_progress = if cue.pre_wait > std::time::Duration::ZERO {
+        Some(exec.pre_wait_elapsed.as_secs_f64() / cue.pre_wait.as_secs_f64())
+    } else {
+        None
+    };
 
     let row = h_stack((
         // Drag handle
@@ -148,7 +170,7 @@ fn cue_row(
                 .items_center()
                 .justify_center()
         }),
-        // Cue number
+        // Cue number (derived from position in cuelist)
         label(move || number.clone()).style(move |s| {
             s.width(theme().dim.col_cue_number)
                 .font_family(theme().font.mono_sm.family.clone())
@@ -180,7 +202,6 @@ fn cue_row(
                 .flex_grow(1.0)
                 .items_center()
                 .gap(theme().dim.space_sm)
-                .padding_left(theme().dim.icon_sm * cue.depth as f64)
         }),
         // Target
         label(move || target.clone()).style(|s| {
@@ -193,9 +214,9 @@ fn cue_row(
         // Pre-wait
         time_cell(pre_wait, pre_progress, false),
         // Duration
-        time_cell(duration, progress, is_running),
+        time_cell(duration_label, progress_fill, is_running),
         // Post-wait
-        time_cell(post_wait, post_progress, false),
+        time_cell(post_wait, None, false),
         // Menu button
         app_icon(
             AppIcon::EllipsisVertical,
@@ -219,6 +240,7 @@ fn cue_row(
     });
 
     let row_id_clone = id;
+    let selected = app_state.selected_cue;
     container(row)
         .style(move |s| {
             let mut s = s
@@ -228,7 +250,7 @@ fn cue_row(
                 .border_bottom(1.0)
                 .border_color(theme().color.border_row_divider);
 
-            if active_cue.get() == Some(row_id_clone) {
+            if is_running {
                 s = s.background(theme().color.status_running_bg_20);
             } else if selected.get() == Some(row_id_clone) {
                 s = s.background(theme().color.bg_selection);
@@ -259,24 +281,26 @@ fn cue_row(
 
 pub fn view(
     cuelist: impl SignalGet<Arc<Cuelist>> + SignalWith<Arc<Cuelist>> + Copy + 'static,
-    selected: RwSignal<Option<CueId>>,
-    active_cue: RwSignal<Option<CueId>>,
+    app_state: AppState,
 ) -> impl IntoView {
-    let filtered = create_memo(move |_| {
-        cuelist.with(|list| {
-            list.iter()
-                .enumerate()
-                .map(|(i, cue)| (i + 1, cue.id, cue.clone()))
-                .collect::<im::Vector<(usize, CueId, Arc<Cue>)>>()
+    let filtered = {
+        let s = app_state.clone();
+        create_memo(move |_| {
+            cuelist.with(|list| {
+                list.iter()
+                    .enumerate()
+                    .filter_map(|(i, cue)| s.cue_state(cue.id).map(|tcs| (i + 1, tcs)))
+                    .collect::<im::Vector<(usize, TransientCueState)>>()
+            })
         })
-    });
+    };
 
     let rows = virtual_list(
         VirtualDirection::Vertical,
         VirtualItemSize::Fixed(Box::new(|| theme().dim.height_cue_row)),
         move || filtered.get(),
-        |(_, id, _)| *id,
-        move |(pos, id, cue)| cue_row(pos, id, cue, selected, active_cue),
+        |(_, tcs)| tcs.id,
+        move |(pos, tcs)| cue_row(pos, tcs, app_state.clone()),
     )
     .style(|s| {
         s.width_full()

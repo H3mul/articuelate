@@ -27,12 +27,17 @@ fn main() {
         .init();
 
     info!("Articuelate starting");
+
+    // ── Workspace (source of truth shared with the execution engine) ──
+    let cuelist = crate::model::Cuelist::new(crate::model::sample_cues());
     let workspace = Arc::new(ArcSwap::from_pointee(WorkspaceState {
-        cuelist: Arc::new(crate::model::Cuelist::new(crate::model::sample_cues())),
+        cuelist: Arc::new(cuelist),
     }));
 
+    // ── Audio engine ──
     let mut audio_engine = Arc::new(AudioEngine::new());
 
+    // ── Execution engine ──
     let execution = ExecutionEngine::new(
         workspace.clone(),
         audio_engine.command_sender(),
