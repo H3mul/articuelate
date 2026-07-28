@@ -38,6 +38,12 @@ style_class!(pub FieldTextarea);
 style_class!(pub DeviceChip);
 style_class!(pub DeviceDot);
 
+// ─── Sidebar & Detail Panels ────────────────────────────────────────
+
+style_class!(pub SidebarRuntime);
+style_class!(pub DetailPanel);
+style_class!(pub TransportGroup);
+
 // ─── Status & LED Graphics ────────────────────────────────────────────────
 
 style_class!(pub LedDot);
@@ -294,7 +300,7 @@ pub fn global_stylesheet(s: Style) -> Style {
                 .color(theme().color.status_running)
                 .cursor(CursorStyle::Pointer)
                 .width(theme().dim.btn_go_width)
-                .flex_grow(1.0)
+                .height(theme().dim.control_md)
                 .font_size(16.0)
                 .font_weight(floem::text::Weight::BOLD)
                 .hover(|s| s.background(theme().color.status_running_bg))
@@ -639,6 +645,32 @@ pub fn global_stylesheet(s: Style) -> Style {
         // ─── Divider ───────────────────────────────────────────────────
         .class(DividerVert, |s| {
             s.width(1.0).background(theme().color.element_border)
+        })
+
+        // ─── Sidebar Runtime ────────────────────────────────────────
+        .class(SidebarRuntime, |s| {
+            s.flex_col()
+                .width(theme().dim.sidebar_width)
+                .flex_shrink(0.0)
+                .background(theme().color.bg_surface)
+                .height_full()
+                .min_height(0.0)
+        })
+
+        // ─── Detail Panel ────────────────────────────────────────────
+        .class(DetailPanel, |s| {
+            s.flex()
+                .height(theme().dim.detail_height)
+                .flex_shrink(0.0)
+                .background(theme().color.bg_surface)
+                .width_full()
+        })
+
+        // ─── Transport Group ─────────────────────────────────────────
+        .class(TransportGroup, |s| {
+            s.flex_col()
+                .flex_shrink(0.0)
+                .gap(theme().dim.space_sm)
         })
 
         // ─── Status Bar Button ─────────────────────────────────────────

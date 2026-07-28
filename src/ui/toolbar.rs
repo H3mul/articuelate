@@ -1,120 +1,88 @@
-//! Compact transport toolbar for the cuelist panel.
+//! Transport toolbar with conductor panel.
+//!
+//! Layout (matching prototype):
+//! ┌──────────┐ ┌────────────────────────────────────────────────┐
+//! │  Panic   │ │  [Playing] 3  Thunderclap                      │
+//! │   GO     │ │  [Next]     4  Rain Ambience                   │
+//! │          │ │              Loop through the storm scene.     │
+//! └──────────┘ └────────────────────────────────────────────────┘
 
 use floem::IntoView;
-use floem::menu::{Menu, MenuItem};
-use floem::peniko::Color;
-use floem::reactive::{RwSignal, SignalGet, SignalUpdate, SignalWith, create_rw_signal};
-use floem::views::{Decorators, button, h_stack, text};
+use floem::reactive::RwSignal;
+use floem::views::{Decorators, button, h_stack, label, text, v_stack};
 use lucide_floem::Icon;
-use std::sync::Arc;
 
 use crate::exec::ExecutionHandle;
-
 use crate::exec::UiEvent;
-use crate::model::{CueId, Cuelist};
-use crate::style::*;
+use crate::style::theme;
+use crate::style::style::{BadgeChip, BadgeRunning, BadgeSm, BtnGo, BtnPanic, ConductorCurrent, ConductorNext, TransportGroup};
+use crate::ui::icons::{AppIcon, app_icon};
 
 pub fn view(
-    cuelist: impl SignalGet<Arc<Cuelist>> + SignalWith<Arc<Cuelist>> + Copy + 'static,
-    active_cue: RwSignal<Option<CueId>>,
-    selected: RwSignal<Option<CueId>>,
     events: ExecutionHandle,
-    devices: Vec<String>,
-    selected_device: RwSignal<Option<String>>,
 ) -> impl IntoView {
-    let paused = create_rw_signal(false);
-
-    let menu_events = events.clone();
-    let devices_button = button(text("Devices"))
-        .context_menu(move || device_menu(&devices, selected_device, menu_events.clone()));
-
-    let pause = button(icon(
-        Icon::Pause,
-        theme().color.status_wait,
-        theme().dim.status_icon_size as f32,
-    ))
-    .action(move || paused.update(|value| *value = !*value));
-    let back = button(icon(
-        Icon::SkipBack,
-        theme().color.text_primary,
-        theme().dim.status_icon_size as f32,
-    ))
-    .action(move || {
-        if let Some(active) = active_cue.get() {
-            let list = cuelist.get();
-            if let Some(position) = list.iter().position(|cue| cue.id == active) {
-                if position > 0 {
-                    if let Some(previous) = list.iter().nth(position - 1) {
-                        active_cue.set(Some(previous.id));
-                        selected.set(Some(previous.id));
-                    }
-                }
-            }
-        }
-    });
-    let go = button(h_stack((
-        icon(
-            Icon::Play,
-            theme().color.status_running,
-            theme().dim.status_icon_size as f32,
-        ),
-        text("GO").style(|s| {
-            s.color(theme().color.text_primary)
-                .font_weight(floem::text::Weight::BOLD)
-        }),
+    let events_panic = events.clone();
+    let events_go = events.clone();
+    let panic_btn = button(v_stack((
+        app_icon(AppIcon::Panic, theme().dim.icon_sm as f32, theme().color.status_error),
+        text("Panic").style(|s| s.color(theme().color.status_error).font_size(10.0).font_weight(floem::text::Weight::SEMIBOLD)),
     )))
+    .class(BtnPanic)
+    .style(|s| s.height(theme().dim.control_md))
     .action(move || {
-        let _ = events.send_user_intent(UiEvent::Go);
+        let _ = events_panic.send_user_intent(UiEvent::Panic);
     });
-    let panic = button(h_stack((
-        icon(
-            Icon::Ban,
-            theme().color.status_error,
-            theme().dim.status_icon_size as f32,
-        ),
-        text("Panic").style(|s| s.color(theme().color.status_error)),
+
+    let go_btn = button(h_stack((
+        Icon::Play.into_view().style(move |s| s.size(theme().dim.icon_md, theme().dim.icon_md).color(theme().color.status_running)),
+        text("GO").style(|s| s.color(theme().color.text_primary).font_weight(floem::text::Weight::BOLD).font_size(16.0)),
     )))
-    .action(move || active_cue.set(None));
+    .class(BtnGo)
+    .style(|s| s.height(theme().dim.control_md))
+    .action(move || {
+        let _ = events_go.send_user_intent(UiEvent::Go);
+    });
 
-    h_stack((
-        devices_button,
-        go,
-        pause,
-        back,
-        text("").style(|s| s.flex_grow(1.0)),
-        panic,
+    // Transport group: Panic + GO stacked
+    let transport_group = v_stack((panic_btn, go_btn))
+        .class(TransportGroup);
+
+    // Current cue conductor (muted)
+    let current_cue = h_stack((
+        label(|| "Playing".to_string()).class(BadgeSm).class(BadgeRunning).class(BadgeChip),
+        label(|| crate::model::CONDUCTOR_CUES.current_number.to_string())
+            .style(|s| s.font_family(theme().font.mono_sm.family.clone()).font_size(theme().font.mono_sm.size).color(theme().color.text_disabled)),
+        label(|| crate::model::CONDUCTOR_CUES.current_name.to_string())
+            .style(|s| s.font_family(theme().font.body.family.clone()).font_size(theme().font.body.size).color(theme().color.text_disabled).min_width(0.0)),
     ))
-    .style(|s| {
-        s.items_center()
-            .width_full()
-            .gap(theme().dim.space_sm)
-            .padding_horiz(theme().dim.space_md)
-            .background(theme().color.bg_surface)
-            .border_bottom(theme().dim.border_size)
-            .border_color(theme().color.border_divider)
-            .height(theme().dim.toolbar_height)
-    })
-}
+    .class(ConductorCurrent);
 
-fn device_menu(
-    devices: &[String],
-    selected: RwSignal<Option<String>>,
-    events: ExecutionHandle,
-) -> Menu {
-    devices.iter().fold(Menu::new("Devices"), |menu, device| {
-        let is_selected = selected.get().as_deref() == Some(device.as_str());
-        let title = format!("{}{}", if is_selected { "● " } else { "○ " }, device);
-        let device_name = device.clone();
-        let selected = selected;
-        let events = events.clone();
-        menu.entry(MenuItem::new(title).action(move || {
-            selected.set(Some(device_name.clone()));
-            let _ = events.send_user_intent(UiEvent::SetAudioDevice(device_name.clone()));
-        }))
-    })
-}
+    // Next cue conductor (focused)
+    let next_cue = h_stack((
+        label(|| "Next".to_string())
+            .class(BadgeSm)
+            .style(|s| s.background(theme().color.status_playhead_bg).color(theme().color.status_playhead).min_width(68.0)),
+        label(|| crate::model::CONDUCTOR_CUES.next_number.to_string())
+            .style(|s| s.font_family(theme().font.mono_sm.family.clone()).font_size(theme().font.heading.size as f32).font_weight(floem::text::Weight::SEMIBOLD).color(theme().color.text_primary)),
+        v_stack((
+            label(|| crate::model::CONDUCTOR_CUES.next_name.to_string())
+                .style(|s| s.font_family(theme().font.body.family.clone()).font_size(theme().font.heading.size as f32).font_weight(floem::text::Weight::SEMIBOLD).color(theme().color.text_primary).min_width(0.0)),
+            label(|| crate::model::CONDUCTOR_CUES.next_notes.to_string())
+                .style(|s| s.font_family(theme().font.body.family.clone()).font_size(theme().font.mono_sm.size).font_style(floem::text::Style::Italic).color(theme().color.text_disabled).min_width(0.0)),
+        ))
+        .style(|s| s.flex_col().min_width(0.0)),
+    ))
+    .class(ConductorNext);
 
-fn icon(icon: Icon, color: Color, size: f32) -> impl IntoView {
-    icon.into_view()
-        .style(move |s| s.size(size, size).color(color))
+    let conductor = v_stack((current_cue, next_cue))
+        .style(|s| s.flex_col().min_width(0.0).flex_grow(1.0).gap(theme().dim.space_sm));
+
+    h_stack((transport_group, conductor))
+        .style(|s| {
+            s.items_center()
+                .width_full()
+                .gap(theme().dim.space_sm)
+                .padding(theme().dim.space_sm)
+                .background(theme().color.bg_surface)
+        })
 }

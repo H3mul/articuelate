@@ -1,5 +1,6 @@
 pub mod cuelist;
 pub mod detail;
+pub mod icons;
 pub mod media;
 pub mod panel;
 pub mod status_bar;

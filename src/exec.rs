@@ -37,6 +37,8 @@ use crate::model::{CueKind, ExecutionState, Playhead, WorkspaceState};
 pub enum UiEvent {
     /// The operator pressed GO.
     Go,
+    /// The operator pressed Panic (stop all).
+    Panic,
     SetAudioDevice(String),
 }
 
@@ -122,12 +124,11 @@ impl ExecutionEngine {
                         Playhead::Playing(active) => cuelist.iter_after(active).and_then(|mut it| it.next().cloned()),
                     };
                     if let Some(cue) = next {
-                        let CueKind::Media { file_path, volume_db, looping, .. } = &cue.kind;
-                        {
+                        if let CueKind::Audio { file_path, volume, looping, .. } = &cue.kind {
                             let _ = tx_dsp.send(DSPCommand::Play {
                                 cue_id: cue.id,
                                 file_path: file_path.clone(),
-                                volume_db: *volume_db,
+                                volume_db: *volume as f32,
                                 looping: *looping,
                             }).await;
                         }

@@ -27,7 +27,9 @@ fn main() {
         .init();
 
     info!("Articuelate starting");
-    let workspace = Arc::new(ArcSwap::from_pointee(WorkspaceState::sample()));
+    let workspace = Arc::new(ArcSwap::from_pointee(WorkspaceState {
+        cuelist: Arc::new(crate::model::Cuelist::new(crate::model::sample_cues())),
+    }));
 
     let mut audio_engine = Arc::new(AudioEngine::new());
 

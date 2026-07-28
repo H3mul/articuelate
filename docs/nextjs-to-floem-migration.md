@@ -1,34 +1,116 @@
-You are executing Phase 1 of the Next.js -> Floem Rust migration: Token & Style Registration.
+Next.js to Floem Migration: Agent Workflow Guide
 
-Do NOT modify any files inside `src/ui/` during this step. Your objective is to establish the single source of truth for design tokens, style classes, and global stylesheets in native Floem.
+You are an expert systems and UI engineer tasked with migrating a Next.js React prototype into a native Rust desktop application using the Floem GUI framework.
 
-Do NOT modify the mockup directory - it is the current source of truth for the migration that we wish to convert into a Floem UI.
+You have access to the local codebase (including a mockup/ directory with the Next.js prototype) and a Chrome MCP server attached to the running web app.
 
-### Step 1: Read Source Tokens
+Instead of guessing the layout, you will dynamically introspect the web prototype and systematically translate it to Floem using the two-phase workflow below.
 
-Parse `mockup/app/globals.css`. Note all values defined under `@theme inline` and `@layer components`.
+Phase 1: Analysis & Mapping
 
-### Step 2: Migrate The Design Tokens to `themes/base.toml` and `src/style/tokens.rs`
+Do NOT write any Rust UI code in this phase. Your sole objective is to inspect, analyze, and map the existing web application state into a structured Floem component blueprint.
 
-The goal is to migrate all token names and token types into types within the `tokens.rs` file, and implement their values and naming within the `base.toml` theme file so that it gets parsed correctly. The final result of these two files should match the current state of globals.css exactly, and the current state can be overwritten / tokens that dont match it can be discarded.
+1. Web Prototype Introspection
 
-### Step 3: Implement Style Classes in `src/style/style.rs`
+Analyze DOM & React Codebase: Use Chrome MCP tools to inspect the active DOM structure of the running Next.js app. Correlate DOM nodes with React components in mockup/src/app/.
 
-Implement all the necessary style classes from globals.css using Floem's `style_class!` macro to define typed class identifiers for every CSS component class:
+Measure Proportions & Layout: Inspect computed styles to record exact flexbox ratios, fixed pixel dimensions (e.g., status bar height, column widths, row heights), and split-pane constraints.
 
-- Cuelist/Grid: `CueRowGrid`, `CueRowGridPlaying`, `CueRowGridSelected`, `CuelistHeader`, `LabelDragHandle`, `BtnAddCueEnd`
-- Buttons & Controls: `BtnPunchDown`, `BtnPanic`, `BtnGo`, `BtnIconSm`, `FieldInput`, `FieldTextarea`, `DeviceChip`, `DeviceDot`
-- Status & LED Graphics: `LedDot`, `LedDotLit`, `MeterTrackSm`, `MeterTrackMd`, `PanelSurface`
-- Typography: `LabelMonoSm`, `LabelMonoXl`, `LabelBody`, `LabelHeading`
-- Any other classes that are required, such that they can be used to apply styles to the Floem components in the same way as they are used in globals.css
+Inspect Interactive States & Telemetry: Inspect how hover, selection, focus, and running cue states are styled in Next.js, including telemetry meters and icon usages.
 
-### Step 4: Implement styling
+2. Architectural Blueprint Generation
 
-Append styling using the floem style classes in `pub fn global_stylesheet(theme: &ThemeColors, dims: &ThemeDimensions) -> Style`.
-Translate all CSS rules from `@layer components` in `globals.css` into Floem's fluent `Style` builder syntax:
+Produce a Component Mapping Report containing:
 
-1. Bind base application canvas background (`app_bg`) and text color (`text_primary`).
-2. Map `.class(ClassName, move |s| ...)` blocks for all classes defined in `src/classes.rs`.
-3. Handle state variants (`.hover()`, `.active()`, `.focus()`, `.focus_visible()`).
-4. Ensure interactive focus states mutate `border_color` rather than using `box_shadow` rings.
-5. Ensure grid cells enforce `min_width(0.0)` and `.text_ellipsis()` where appropriate.
+Root Shell Structure: High-level flex/grid hierarchy (e.g., Vertical Split -> Top Workspace / Bottom Inspector; Status Bar at bottom).
+
+Module Breakdown: List of required Rust UI modules to map to src/ui/ (e.g., status_bar.rs, cuelist.rs, media.rs, detail.rs, tabbed.rs, icons.rs).
+
+State Inventory: Map React useState hooks to Floem RwSignal instances (e.g., selected cue ID, active cuelist vector, tab selection, meter telemetry values).
+
+Icon Inventory: Catalog all Lucide icons used across the prototype to map to lucide-floem.
+
+MANDATORY GATE: Output the Component Mapping Report for user review and approval before proceeding to Phase 2.
+
+Phase 2: Implementation & Assembly
+
+Once the analysis report is approved, execute the structural translation and Rust implementation using the guidelines below.
+
+1. Structural Translation Rules (React/Tailwind ➔ Floem/Taffy)
+
+A. Container Layouts
+
+Floem relies on the Taffy layout engine. Map HTML/Tailwind flexbox directly to Floem primitives:
+
+<div className="flex flex-col"> ➔ v_stack((child1, child2))
+
+<div className="flex flex-row"> ➔ h_stack((child1, child2))
+
+<div className="grid"> ➔ Use container() or h_stack() with .style(|s| s.display(Display::Grid).grid_template_columns(...))
+
+Scrollable Views: <div className="overflow-y-auto"> ➔ scroll(v_stack(...)) or virtual_list(...) for the cuelist.
+
+Resizable Panes: React <ResizablePanelGroup> ➔ Floem resizable_panel(...) (or custom split container).
+
+B. Icon System (lucide-floem)
+
+Central Encapsulation: Encapsulate lucide_floem::Icon calls inside ui/icons.rs.
+
+Token Dimensions: Bind sizes to --spacing-icon-sm (14px) or --spacing-icon-md (18px) from ThemeDimensions.
+
+Example Wrapper (ui/icons.rs):
+
+use lucide_floem::{Icon, LucideIcon};
+use floem::views::Decorate;
+
+pub fn app_icon(icon: LucideIcon, size: f32) -> impl Decorate {
+Icon::new(icon)
+.style(move |s| s.width(size).height(size).flex_shrink(0.0))
+}
+
+C. Styling & Classes
+
+Apply pre-registered CSS classes via .class(ClassName) on views (e.g., PanelSurface, BtnPunchDown, CueRowGrid).
+
+NO LITERALS: Never hardcode hex colors or inline pixel dimensions. Use ThemeColors and ThemeDimensions.
+
+D. Taffy Layout Safety (CRITICAL)
+
+In Floem/Taffy, dynamic text labels in flex/grid tracks will blow out container bounds unless strictly constrained.
+
+Rule: Any dynamic text label inside a grid or flex row (e.g., Cue Names, File Paths) MUST have text ellipsis and a min-width applied:
+label(|| text).style(|s| s.text_ellipsis().min_width(0.0))
+
+E. Interactions & Events
+
+onClick={...} ➔ .on_click_stop(move |_| { ... }) or .action(...) for Floem button primitives.
+
+useState ➔ RwSignal::new(...). Read/track signals in view closures using .get() or .with().
+
+2. Step-by-Step Assembly Execution
+
+Build Layout Shell (src/app.rs & src/ui/mod.rs):
+
+Assemble the main application shell using v_stack and h_stack based on Phase 1 mapping.
+
+Use placeholder containers (container(label(|| "Placeholder"))) for inner panes.
+
+Verify shell flex proportions and fixed status bar height.
+
+Implement Components Iteratively (src/ui/):
+
+Migrate one module at a time (status_bar.rs ➔ detail.rs ➔ media.rs ➔ cuelist.rs).
+
+Use Chrome MCP as needed to double-check computed styles or padding of specific widgets.
+
+Inject established CSS classes via .class(...) and lucide-floem icons via src/ui/icons.rs.
+
+Wire Dynamic State Signals:
+
+Define top-level RwSignal states for the cuelist, active selection, and active running cues.
+
+Bind signals to virtual_list for the cuelist and telemetry bars for active media.
+
+Execution Command
+
+"Begin Phase 1 (Analysis & Mapping). Introspect the Chrome mockup via MCP, inspect the codebase, and present the Component Mapping Report for approval. Do not write Rust code until Phase 1 is approved."

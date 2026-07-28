@@ -5,13 +5,14 @@ use std::sync::Arc;
 
 use arc_swap::ArcSwap;
 use crossbeam_channel::Receiver;
+
 use floem::ext_event::create_signal_from_channel;
 
 use floem::reactive::{
     ReadSignal, RwSignal, SignalGet, SignalUpdate, SignalWith, create_effect, create_memo,
     create_rw_signal, provide_context,
 };
-use floem::views::{Decorators, dyn_container, v_stack};
+use floem::views::{Decorators, dyn_container, h_stack, v_stack};
 use floem::window::WindowConfig;
 use floem::{Application, IntoView};
 
@@ -22,8 +23,7 @@ use crate::audio::{AudioEngine, AudioTelemetry};
 use crate::exec::ExecutionHandle;
 use crate::model::{ExecutionState, Playhead, WorkspaceState};
 use crate::style::{Theme, global_stylesheet, load_theme, theme};
-use crate::ui::{cuelist, panel::PanelSystem, status_bar, toolbar};
-use crate::ui::{detail, media};
+use crate::ui::{cuelist, detail, media, status_bar, toolbar};
 
 /// The Floem application and its UI-side execution-state channel.
 pub struct App {
@@ -91,7 +91,7 @@ impl App {
             workspace,
             exec_state_rx,
             execution,
-            telemetry,
+            telemetry: _,
             audio_engine,
             theme_signal,
             theme_rx,
@@ -102,11 +102,10 @@ impl App {
             info!(device = %device, "Setting initial audio device");
             let _ = execution.send_user_intent(crate::exec::UiEvent::SetAudioDevice(device));
         }
+
         Application::new()
             .window(
                 move |_| {
-                    let selected_device = create_rw_signal(devices.first().cloned());
-
                     let exec_state_signal_r =
                         create_signal_from_channel::<Arc<ExecutionState>>(exec_state_rx);
 
@@ -129,7 +128,6 @@ impl App {
                         }
                     });
 
-                    let _media = telemetry.map(media::view);
                     let ws = workspace.clone();
                     let execution = execution.clone();
                     dyn_container(
@@ -139,8 +137,6 @@ impl App {
                                 ws.clone(),
                                 exec_state_signal_r,
                                 execution.clone(),
-                                devices.clone(),
-                                selected_device,
                             )
                         },
                     )
@@ -183,8 +179,6 @@ fn app_view(
     workspace: Arc<ArcSwap<WorkspaceState>>,
     exec_state: ReadSignal<Option<Arc<ExecutionState>>>,
     execution: ExecutionHandle,
-    devices: Vec<String>,
-    selected_device: RwSignal<Option<String>>,
 ) -> impl IntoView {
     let workspace_signal: RwSignal<Arc<WorkspaceState>> = create_rw_signal(workspace.load_full());
     let cuelist_memo = create_memo(move |_| workspace_signal.with(|ws| ws.cuelist.clone()));
@@ -192,6 +186,7 @@ fn app_view(
     let selected = create_rw_signal(None);
     let active_cue = create_rw_signal(None);
 
+    // Wire execution state to active/selected signals
     {
         let act = active_cue;
         let sel = selected;
@@ -201,7 +196,6 @@ fn app_view(
                     Playhead::Stopped => None,
                     Playhead::Playing(id) => Some(id),
                 };
-
                 act.set(p);
                 sel.set(p);
             }
@@ -209,38 +203,47 @@ fn app_view(
     }
 
     let cuelist_view = cuelist::view(cuelist_memo, selected, active_cue);
+    let toolbar_view = toolbar::view(execution);
+    let detail_view = detail::view(selected, cuelist_memo);
+    let sidebar_view = media::view();
+    let cue_count = cuelist_memo.get().len();
+    let selected_count_rw = create_rw_signal(0usize);
 
-    let _detail = detail::view(selected, cuelist_memo);
+    // Track selected count
+    create_effect(move |_| {
+        if selected.get().is_some() {
+            selected_count_rw.set(1);
+        } else {
+            selected_count_rw.set(0);
+        }
+    });
 
-    let panel_system = PanelSystem::new();
-
-    let toolbar = toolbar::view(
-        cuelist_memo,
-        active_cue,
-        selected,
-        execution,
-        devices,
-        selected_device,
+    let status_bar_view = status_bar::view(
+        selected_count_rw.get_untracked(),
+        cue_count,
     );
 
-    let main_view = floem::views::v_stack((toolbar, cuelist_view))
-        .style(|s| s.width_full().height_full().min_size(0.0, 0.0));
+    // Left column: toolbar + cuelist
+    let left_column = v_stack((toolbar_view, cuelist_view))
+        .style(|s| s.flex_col().min_width(0.0).flex_grow(1.0).height_full());
 
-    let panels = panel_system
-        .builder()
-        .with_main(main_view)
-        // .with_bottom(detail)
-        // .with_right(media)
-        .build()
-        .into_view();
+    // Main workspace: left column + sidebar (1px gutter between)
+    let main_workspace = v_stack((
+        h_stack((
+            left_column,
+            sidebar_view,
+        ))
+        .style(|s| s.flex_row().flex_grow(1.0).min_height(0.0).height_full().width_full().gap(1.0)),
+        detail_view,
+    ))
+    .style(|s| s.flex_col().flex_grow(1.0).min_height(0.0).height_full().width_full().gap(1.0));
 
-    let status_bar = status_bar::view(panel_system);
-
-    v_stack((panels, status_bar.into_any()))
+    v_stack((main_workspace, status_bar_view))
         .style(|s| {
             s.flex_col()
                 .width_full()
                 .height_full()
+                .gap(1.0)
                 .background(theme().color.bg_app)
         })
         .style(global_stylesheet)

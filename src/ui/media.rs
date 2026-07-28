@@ -1,112 +1,180 @@
-//! Right sidebar: "Currently Playing Media" live telemetry monitor.
-//!
-//! This is where Floem's fine-grained reactivity shines. A 50fps timer random-
-//! walks one `RwSignal<f64>` per audio channel and pushes it through a derived
-//! `Pct` signal. Only the bound meter bars repaint - the rest of the UI sleeps,
-//! which is exactly what an audio app needs for cheap, smooth metering.
+//! Runtime sidebar — active cues panel with global controls.
 
 use floem::IntoView;
+use floem::unit::Pct;
+use floem::reactive::{SignalGet, create_rw_signal};
+use floem::views::{Decorators, container, h_stack, label, scroll, slider, v_stack, v_stack_from_iter, empty};
 
-use crate::audio::AudioTelemetry;
-use floem::reactive::{RwSignal, SignalGet, create_get_update, create_rw_signal};
-use floem::unit::{Pct, UnitExt};
-use floem::views::{Decorators, h_stack, label, list, slider, text, v_stack};
+use crate::model::{ActiveCue, CueColor, sample_active_cues};
+use crate::style::theme;
+use crate::ui::icons::{AppIcon, app_icon};
 
-use crate::model::sample_active_media;
-use crate::style::*;
-
-pub fn view(_telemetry: std::sync::Arc<AudioTelemetry>) -> impl IntoView {
-    // The UI reads the latest per-cue atomics when its reactive timer runs.
-    let names = sample_active_media();
-    let n = names.len();
-
-    // One independent level signal per channel -> surgical updates.
-    let levels: Vec<RwSignal<f64>> = (0..n).map(|_| create_rw_signal(0.0)).collect();
-
-    // Telemetry pump: smooth random walk at ~20fps.
-    // let levels_timer = levels.clone();
-    // let tick = create_rw_signal(());
-    // create_effect(move |_| {
-    //     tick.track();
-    //     let lt = levels_timer.clone();
-    //     exec_after(Duration::from_millis(50), move |_| {
-    //         for l in &lt {
-    //             l.update(|x| {
-    //                 let target = fastrand::f64();
-    //                 *x = (*x + (target - *x) * 0.35).clamp(0.0, 1.0);
-    //             });
-    //         }
-    //         tick.set(());
-    //     });
-    // });
-
-    let mut channels = Vec::new();
-    for idx in 0..n {
-        let name = names[idx].clone();
-        let lvl = levels[idx];
-        let pct = create_get_update(lvl, |v: &f64| Pct(*v), |p: &Pct| p.0);
-        channels.push(channel_view(idx, name, pct));
+fn vertical_led_meter(level: f64, count: usize) -> impl IntoView {
+    let lit_count = (level.min(1.0).max(0.0) * count as f64).round() as usize;
+    let mut dots = Vec::new();
+    for i in 0..count {
+        let is_lit = i < lit_count;
+        let color = if i >= (count as f64 * 0.83) as usize {
+            theme().color.status_error
+        } else if i >= (count as f64 * 0.66) as usize {
+            theme().color.status_wait
+        } else {
+            theme().color.status_running
+        };
+        dots.push(
+            container(empty()).style(move |s| {
+                s.size(theme().dim.led_dot, theme().dim.led_dot)
+                    .border_radius(theme().dim.radius_full)
+                    .background(if is_lit { color } else { theme().color.element_bg })
+                    .border(1.0).border_color(theme().color.element_border)
+            }).into_any()
+        );
     }
-
-    let header = text("ACTIVE MEDIA").style(|s| {
-        s.font_family(theme().font.mono_sm.family)
-            .font_size(11.0)
-            .color(theme().color.text_secondary)
-            .flex_grow(1.0)
-            .gap(8.0)
-            .padding_horiz(12.0)
-            .padding_vert(8.0)
-            .border_bottom(1.0)
-            .border_color(theme().color.border_subtle)
-    });
-
-    let body = list(channels).style(|s| s.flex_col().gap(14.0).padding(12.0).flex_grow(1.0));
-
-    v_stack((header, body)).style(|s| {
-        s.flex_col()
-            .width(260.0)
-            .min_width(200.0)
-            .background(theme().color.bg_surface)
-            .height_full()
-    })
+    v_stack_from_iter(dots).style(|s| s.flex_col().items_center().gap(1.0).width(theme().dim.meter_width_sm))
 }
 
-fn channel_view(
-    idx: usize,
-    name: std::sync::Arc<str>,
-    pct: impl SignalGet<Pct> + Copy + 'static,
-) -> impl IntoView {
-    let _ = idx;
-    let db = label(move || format!("{:+.1} dB", db_from_pct(pct.get().0))).style(|s| {
-        s.font_family(theme().font.mono_sm.family)
-            .color(theme().color.status_running)
-            .font_size(11.0)
-    });
+fn fmt(seconds: f64) -> String {
+    let m = (seconds / 60.0).floor() as u32;
+    let s = seconds as u32 % 60;
+    format!("{:02}:{:02}", m, s)
+}
 
-    let meter = slider::Slider::new(move || pct.get())
-        .disabled(|| true)
-        .slider_style(|s| {
-            s.handle_radius(0)
-                .bar_radius(25.pct())
-                .accent_bar_radius(25.pct())
-        })
-        .style(|s| s.width_full().height(14.0));
+fn active_cue_row(cue: &ActiveCue) -> impl IntoView {
+    let stripe_color = match cue.color {
+        CueColor::None => theme().color.status_playhead,
+        CueColor::Red => theme().color.status_error,
+        CueColor::Orange => theme().color.status_group,
+        CueColor::Green => theme().color.status_running,
+        CueColor::Blue => theme().color.status_playhead,
+        CueColor::Purple => theme().color.status_standby,
+    };
+    let number = cue.number.clone();
+    let name = cue.name.clone();
+    let file = cue.file.clone();
+    let duration = fmt(cue.duration);
+    let remaining = fmt(cue.remaining);
+    let level = cue.level;
 
-    v_stack((
+    let top_row = h_stack((
         h_stack((
-            label(move || name.to_string()).style(|s| {
-                s.color(theme().color.text_primary)
-                    .font_size(12.0)
-                    .flex_grow(1.0)
-            }),
-            db,
+            label(move || number.clone()).style(|s| s.width(theme().dim.space_xl).flex_shrink(0.0)
+                .font_family(theme().font.mono_sm.family.clone()).font_size(theme().font.mono_sm.size)
+                .color(theme().color.status_playhead)),
+            label(move || name.clone()).style(|s| s.font_family(theme().font.body.family.clone())
+                .font_size(12.0).font_weight(floem::text::Weight::MEDIUM).color(theme().color.text_primary)
+                .min_width(0.0)),
+        )).style(|s| s.min_width(0.0).items_center().gap(theme().dim.space_xs).flex_grow(1.0)),
+        h_stack((
+            container(app_icon(AppIcon::SkipBack, theme().dim.icon_sm as f32, theme().color.text_secondary))
+                .style(|s| s.size(theme().dim.space_xl, theme().dim.space_xl).items_center().justify_center()
+                    .border_radius(theme().dim.radius_sm).border(1.0).border_color(theme().color.element_border)
+                    .background(theme().color.element_bg)),
+            container(app_icon(AppIcon::Pause, theme().dim.icon_sm as f32, theme().color.text_secondary))
+                .style(|s| s.size(theme().dim.space_xl, theme().dim.space_xl).items_center().justify_center()
+                    .border_radius(theme().dim.radius_sm).border(1.0).border_color(theme().color.element_border)
+                    .background(theme().color.element_bg)),
+            container(app_icon(AppIcon::Spline, theme().dim.icon_sm as f32, theme().color.text_secondary))
+                .style(|s| s.size(theme().dim.space_xl, theme().dim.space_xl).items_center().justify_center()
+                    .border_radius(theme().dim.radius_sm).border(1.0).border_color(theme().color.element_border)
+                    .background(theme().color.element_bg)),
+            container(app_icon(AppIcon::Stop, theme().dim.icon_sm as f32, theme().color.status_error))
+                .style(|s| s.size(theme().dim.space_xl, theme().dim.space_xl).items_center().justify_center()
+                    .border_radius(theme().dim.radius_sm).border(1.0).border_color(theme().color.element_border)
+                    .background(theme().color.element_bg)),
         ))
-        .style(|s| s.items_center().gap(8.0)),
-        meter,
-    ))
-    .style(|s| s.flex_col().gap(4.0))
+        .style(|s| s.flex_shrink(0.0).items_center().gap(theme().dim.space_xs)),
+    )).style(|s| s.flex_shrink(0.0).items_center().justify_between().gap(theme().dim.space_xs));
+
+    let bottom_row = h_stack((
+        h_stack((
+            label(move || file.clone()).style(|s| s.min_width(0.0).flex_grow(1.0)
+                .font_family(theme().font.mono_sm.family.clone()).font_size(theme().font.mono_sm.size)
+                .color(theme().color.text_disabled)),
+            label(move || format!("{} -{}", duration, remaining)).style(|s| s.flex_shrink(0.0)
+                .font_family(theme().font.mono_sm.family.clone()).font_size(theme().font.mono_sm.size)
+                .color(theme().color.text_disabled)),
+        )).style(|s| s.min_width(0.0).flex_grow(1.0).items_center().gap(theme().dim.space_xs)),
+        vertical_led_meter(level, 10),
+        vertical_led_meter(level * 0.9, 10),
+    )).style(|s| s.items_center().gap(6.0).width_full());
+
+    v_stack((top_row, bottom_row))
+        .style(move |s| {
+            s.flex_col().gap(6.0).height(theme().dim.active_card_height)
+                .border_radius(theme().dim.radius_sm).border(1.0)
+                .border_color(theme().color.element_border).background(theme().color.element_bg_hover)
+                .padding_horiz(theme().dim.space_sm).padding_top(theme().dim.space_xs)
+                .border_left(3.0).border_color(stripe_color)
+        })
 }
 
-fn db_from_pct(p: f64) -> f64 {
-    20.0 * p.max(1e-4).log10()
+pub fn view() -> impl IntoView {
+    let active_cues = sample_active_cues();
+    let running_count = active_cues.len();
+    let gain = create_rw_signal(0.88);
+
+    let db_str = move || {
+        let v = gain.get();
+        if v == 0.0 { "-∞".to_string() } else { format!("{:.1}", (v * 24.0 - 24.0)) }
+    };
+
+    let header = h_stack((
+        label(|| "Active Cues".to_string()).style(|s| s.font_family(theme().font.body.family.clone())
+            .font_size(theme().font.body.size).font_weight(floem::text::Weight::SEMIBOLD).color(theme().color.text_primary)),
+        label(move || format!("{} running", running_count)).style(|s| s.margin_left(Pct(100.0))
+            .border_radius(theme().dim.radius_sm).padding_vert(2.0).padding_horiz(theme().dim.space_sm)
+            .font_family(theme().font.mono_sm.family.clone()).font_size(theme().font.mono_sm.size)
+            .font_weight(floem::text::Weight::SEMIBOLD).background(theme().color.status_running_bg)
+            .color(theme().color.status_running)),
+    )).style(|s| s.flex_shrink(0.0).items_center().gap(theme().dim.space_sm)
+        .padding_horiz(theme().dim.space_md).padding_vert(theme().dim.space_sm)
+        .border_bottom(1.0).border_color(theme().color.element_border));
+
+    let btn_style = |s: floem::style::Style| {
+        s.size(theme().dim.space_xl, theme().dim.space_xl).items_center().justify_center()
+            .border_radius(theme().dim.radius_md).border(1.0).border_color(theme().color.element_border)
+            .background(theme().color.element_bg)
+    };
+
+    let global_controls = v_stack((
+        h_stack((
+            container(app_icon(AppIcon::SkipBack, theme().dim.icon_md as f32, theme().color.text_secondary)).style(btn_style),
+            container(app_icon(AppIcon::Pause, theme().dim.icon_md as f32, theme().color.text_secondary)).style(btn_style),
+            container(app_icon(AppIcon::Spline, theme().dim.icon_md as f32, theme().color.text_secondary)).style(btn_style),
+            container(app_icon(AppIcon::Stop, theme().dim.icon_md as f32, theme().color.status_error)).style(btn_style),
+        )).style(|s| s.items_center().gap(theme().dim.space_xs)),
+        h_stack((
+            label(|| "MASTER".to_string()).style(|s| s.flex_shrink(0.0)
+                .font_family(theme().font.mono_sm.family.clone()).font_size(theme().font.mono_sm.size)
+                .color(theme().color.text_disabled)),
+            slider::Slider::new(move || gain.get()).style(|s| s.flex_grow(1.0).height(6.0)),
+            label(move || format!("{} dB", db_str())).style(|s| s.width(48.0).flex_shrink(0.0)
+                .font_family(theme().font.mono_sm.family.clone()).font_size(theme().font.mono_sm.size)
+                .color(theme().color.text_secondary)),
+        )).style(|s| s.items_center().gap(theme().dim.space_sm)),
+        h_stack((
+            container(empty()).style(move |s| s.size(theme().dim.dot_sm, theme().dim.dot_sm)
+                .border_radius(theme().dim.radius_full).background(theme().color.status_running)),
+            label(|| "Audio Interface 1".to_string()).style(|s| s.font_family(theme().font.mono_sm.family.clone())
+                .font_size(theme().font.mono_sm.size).color(theme().color.text_disabled)),
+            label(|| "Operational".to_string()).style(|s| s.margin_left(Pct(100.0))
+                .font_family(theme().font.mono_sm.family.clone()).font_size(theme().font.mono_sm.size)
+                .color(theme().color.text_disabled)),
+        )).style(|s| s.items_center().width_full().gap(8.0).border_radius(theme().dim.radius_full)
+            .border(1.0).border_color(theme().color.element_border).background(theme().color.element_bg)
+            .padding_vert(4.0).padding_horiz(theme().dim.space_md)),
+    )).style(|s| s.flex_shrink(0.0).flex_col().gap(theme().dim.space_sm)
+        .padding_horiz(theme().dim.space_md).padding_vert(theme().dim.space_sm)
+        .border_bottom(1.0).border_color(theme().color.element_border));
+
+    let mut cue_rows = Vec::new();
+    for cue in &active_cues {
+        cue_rows.push(active_cue_row(cue).into_any());
+    }
+    let cue_list = scroll(v_stack_from_iter(cue_rows).style(|s| s.flex_col().gap(theme().dim.space_sm)))
+        .style(|s| s.flex_grow(1.0).min_height(0.0).padding(theme().dim.space_sm));
+
+    v_stack((header, global_controls, cue_list))
+        .style(|s| s.flex_col().width(theme().dim.sidebar_width).flex_shrink(0.0)
+            .background(theme().color.bg_surface).height_full().min_height(0.0))
 }
