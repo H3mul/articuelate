@@ -2,16 +2,23 @@
 
 use floem::IntoView;
 use floem::reactive::{Memo, SignalGet, SignalWith, create_rw_signal};
-use floem::unit::Pct;
+
 use floem::views::{
-    Decorators, container, empty, h_stack, label, scroll, slider, v_stack, v_stack_from_iter,
+    Decorators, button, container, empty, h_stack, label, scroll, slider, v_stack,
+    v_stack_from_iter,
 };
 
 use crate::model::{CueColor, TransientCueState};
 use crate::style::theme;
 use crate::ui::icons::{AppIcon, app_icon};
 
-fn vertical_led_meter(level: f64, count: usize) -> impl IntoView {
+fn audio_meter(level_l: f64, level_r: f64) -> impl IntoView {
+    h_stack((vertical_led_meter(level_l), vertical_led_meter(level_r)))
+        .style(|s| s.min_width(0.0).flex_grow(1.0).items_center())
+}
+
+fn vertical_led_meter(level: f64) -> impl IntoView {
+    let count = 10;
     let lit_count = (level.min(1.0).max(0.0) * count as f64).round() as usize;
     let mut dots = Vec::new();
     for i in 0..count {
@@ -23,7 +30,8 @@ fn vertical_led_meter(level: f64, count: usize) -> impl IntoView {
         } else {
             theme().color.status_running
         };
-        dots.push(
+        dots.insert(
+            0,
             container(empty())
                 .style(move |s| {
                     s.size(theme().dim.led_dot, theme().dim.led_dot)
@@ -73,7 +81,7 @@ fn active_cue_row(tcs: &TransientCueState) -> impl IntoView {
         .unwrap_or_else(|| "—".to_string());
     let duration = fmt(metrics.total_duration_sec());
     let remaining = fmt(metrics.total_duration_sec() - metrics.current_time_sec());
-    let level = metrics.left_peak() as f64;
+    let levels = (metrics.left_peak() as f64, metrics.right_peak() as f64);
 
     let top_row = h_stack((
         h_stack((label(move || name.clone()).style(|s| {
@@ -178,10 +186,9 @@ fn active_cue_row(tcs: &TransientCueState) -> impl IntoView {
                 .items_center()
                 .gap(theme().dim.space_xs)
         }),
-        vertical_led_meter(level, 10),
-        vertical_led_meter(level * 0.9, 10),
+        audio_meter(levels.0, levels.1),
     ))
-    .style(|s| s.items_center().gap(6.0).width_full());
+    .style(|s| s.flex_row().items_center().gap(6.0).width_full());
 
     v_stack((top_row, bottom_row)).style(move |s| {
         s.flex_col()
@@ -218,12 +225,15 @@ pub fn view(running_transients: Memo<Vec<TransientCueState>>) -> impl IntoView {
                 .font_size(theme().font.body.size)
                 .font_weight(floem::text::Weight::SEMIBOLD)
                 .color(theme().color.text_primary)
+                .min_width(0.0)
         }),
+        // Consume only the space available inside the sidebar so the badge
+        // remains aligned to the parent's right edge.
+        container(empty()).style(|s| s.flex_grow(1.0).min_width(0.0)),
         label(move || format!("{} running", running_count)).style(|s| {
-            s.margin_left(Pct(100.0))
+            s.flex_shrink(0.0)
                 .border_radius(theme().dim.radius_sm)
-                .padding_vert(2.0)
-                .padding_horiz(theme().dim.space_sm)
+                .padding(theme().dim.space_sm)
                 .font_family(theme().font.mono_sm.family.clone())
                 .font_size(theme().font.mono_sm.size)
                 .font_weight(floem::text::Weight::SEMIBOLD)
@@ -232,8 +242,10 @@ pub fn view(running_transients: Memo<Vec<TransientCueState>>) -> impl IntoView {
         }),
     ))
     .style(|s| {
-        s.flex_shrink(0.0)
-            .items_center()
+        s.items_center()
+            .width_full()
+            .min_width(0.0)
+            .flex_shrink(1.0)
             .gap(theme().dim.space_sm)
             .padding_horiz(theme().dim.space_md)
             .padding_vert(theme().dim.space_sm)
@@ -253,25 +265,25 @@ pub fn view(running_transients: Memo<Vec<TransientCueState>>) -> impl IntoView {
 
     let global_controls = v_stack((
         h_stack((
-            container(app_icon(
+            button(app_icon(
                 AppIcon::SkipBack,
                 theme().dim.icon_md as f32,
                 theme().color.text_secondary,
             ))
             .style(btn_style),
-            container(app_icon(
+            button(app_icon(
                 AppIcon::Pause,
                 theme().dim.icon_md as f32,
                 theme().color.text_secondary,
             ))
             .style(btn_style),
-            container(app_icon(
+            button(app_icon(
                 AppIcon::Spline,
                 theme().dim.icon_md as f32,
                 theme().color.text_secondary,
             ))
             .style(btn_style),
-            container(app_icon(
+            button(app_icon(
                 AppIcon::Stop,
                 theme().dim.icon_md as f32,
                 theme().color.status_error,
@@ -308,8 +320,7 @@ pub fn view(running_transients: Memo<Vec<TransientCueState>>) -> impl IntoView {
                     .color(theme().color.text_disabled)
             }),
             label(|| "Operational".to_string()).style(|s| {
-                s.margin_left(Pct(100.0))
-                    .font_family(theme().font.mono_sm.family.clone())
+                s.font_family(theme().font.mono_sm.family.clone())
                     .font_size(theme().font.mono_sm.size)
                     .color(theme().color.text_disabled)
             }),
@@ -318,7 +329,7 @@ pub fn view(running_transients: Memo<Vec<TransientCueState>>) -> impl IntoView {
             s.items_center()
                 .width_full()
                 .gap(8.0)
-                .border_radius(theme().dim.radius_full)
+                .border_radius(theme().font.mono_sm.line_height)
                 .border(1.0)
                 .border_color(theme().color.element_border)
                 .background(theme().color.element_bg)
@@ -349,9 +360,16 @@ pub fn view(running_transients: Memo<Vec<TransientCueState>>) -> impl IntoView {
                     .padding(theme().dim.space_sm)
             });
 
-    v_stack((header, global_controls, cue_list)).style(|s| {
+    let controls_with_meter = h_stack((global_controls, audio_meter(0.9, 0.8))).style(|s| {
+        s.flex_row()
+            .width_full()
+            .items_center()
+            .gap(theme().dim.space_sm)
+    });
+
+    v_stack((header, controls_with_meter, cue_list)).style(|s| {
         s.flex_col()
-            .width(theme().dim.sidebar_width)
+            .width_full()
             .flex_shrink(0.0)
             .background(theme().color.bg_surface)
             .height_full()

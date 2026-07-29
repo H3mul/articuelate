@@ -104,20 +104,44 @@ impl PanelSystemBuilder {
         self
     }
 
+    /// Register the left panel with an optional initial width.
+    ///
+    /// When `width` is `None`, the panel starts at `min_panel_size`.
     #[allow(dead_code)]
-    pub fn with_left(mut self, view: impl IntoView + 'static) -> Self {
+    pub fn with_left(mut self, view: impl IntoView + 'static, width: Option<f32>) -> Self {
+        self.handle.sizes.update(|sizes| {
+            sizes.left = width
+                .map(f64::from)
+                .unwrap_or_else(|| theme().dim.min_panel_size);
+        });
         self.left = Some(view.into_any());
         self
     }
 
+    /// Register the right panel with an optional initial width.
+    ///
+    /// When `width` is `None`, the panel starts at `min_panel_size`.
     #[allow(dead_code)]
-    pub fn with_right(mut self, view: impl IntoView + 'static) -> Self {
+    pub fn with_right(mut self, view: impl IntoView + 'static, width: Option<f32>) -> Self {
+        self.handle.sizes.update(|sizes| {
+            sizes.right = width
+                .map(f64::from)
+                .unwrap_or_else(|| theme().dim.min_panel_size);
+        });
         self.right = Some(view.into_any());
         self
     }
 
+    /// Register the bottom panel with an optional initial height.
+    ///
+    /// When `height` is `None`, the panel starts at `min_panel_size`.
     #[allow(dead_code)]
-    pub fn with_bottom(mut self, view: impl IntoView + 'static) -> Self {
+    pub fn with_bottom(mut self, view: impl IntoView + 'static, height: Option<f32>) -> Self {
+        self.handle.sizes.update(|sizes| {
+            sizes.bottom = height
+                .map(f64::from)
+                .unwrap_or_else(|| theme().dim.min_panel_size);
+        });
         self.bottom = Some(view.into_any());
         self
     }

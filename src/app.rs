@@ -267,8 +267,8 @@ fn app_view(
     let panel = PanelSystem::new()
         .builder()
         .with_main(main_view)
-        .with_right(sidebar_view)
-        .with_bottom(detail_view)
+        .with_right(sidebar_view, Some(theme().dim.sidebar_width as f32))
+        .with_bottom(detail_view, Some(theme().dim.detail_height as f32))
         .build();
 
     v_stack((panel, status_bar_view))
