@@ -101,6 +101,7 @@ pub struct ColorStyle {
     pub status_group_bg_25: Color,
     pub border_divider_40: Color,
     pub text_disabled_50: Color,
+    pub element_border_25: Color,
 
     pub slider_track: Color,
     pub slider_fill: Color,

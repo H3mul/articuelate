@@ -14,7 +14,7 @@ use crate::ui::icons::{AppIcon, app_icon};
 
 fn audio_meter(level_l: f64, level_r: f64) -> impl IntoView {
     h_stack((vertical_led_meter(level_l), vertical_led_meter(level_r)))
-        .style(|s| s.min_width(0.0).flex_grow(1.0).items_center())
+        .style(|s| s.gap(theme().dim.space_xs))
 }
 
 fn vertical_led_meter(level: f64) -> impl IntoView {
@@ -36,23 +36,15 @@ fn vertical_led_meter(level: f64) -> impl IntoView {
                 .style(move |s| {
                     s.size(theme().dim.led_dot, theme().dim.led_dot)
                         .border_radius(theme().dim.radius_full)
-                        .background(if is_lit {
-                            color
-                        } else {
-                            theme().color.element_bg
-                        })
+                        .background(theme().color.element_bg)
                         .border(1.0)
-                        .border_color(theme().color.element_border)
+                        .border_color(theme().color.element_border_25)
+                        .apply_if(is_lit, |s| s.background(color))
                 })
                 .into_any(),
         );
     }
-    v_stack_from_iter(dots).style(|s| {
-        s.flex_col()
-            .items_center()
-            .gap(1.0)
-            .width(theme().dim.meter_width_sm)
-    })
+    v_stack_from_iter(dots).style(|s| s.gap(2.0))
 }
 
 fn fmt(seconds: f64) -> String {
@@ -201,7 +193,6 @@ fn active_cue_row(tcs: &TransientCueState) -> impl IntoView {
             .padding_horiz(theme().dim.space_sm)
             .padding_top(theme().dim.space_xs)
             .border_left(3.0)
-            .border_color(stripe_color)
     })
 }
 
@@ -338,11 +329,23 @@ pub fn view(running_transients: Memo<Vec<TransientCueState>>) -> impl IntoView {
         }),
     ))
     .style(|s| {
-        s.flex_shrink(0.0)
+        s.flex_grow(1.0)
+            .min_width(0.0)
             .flex_col()
             .gap(theme().dim.space_sm)
-            .padding_horiz(theme().dim.space_md)
             .padding_vert(theme().dim.space_sm)
+    });
+
+    let controls_with_meter = h_stack((
+        global_controls,
+        audio_meter(0.9, 0.8).style(|s| s.padding_vert(theme().dim.space_sm)),
+    ))
+    .style(|s| {
+        s.flex_row()
+            .width_full()
+            .items_end()
+            .gap(theme().dim.space_sm)
+            .padding_horiz(theme().dim.space_md)
             .border_bottom(1.0)
             .border_color(theme().color.element_border)
     });
@@ -352,6 +355,7 @@ pub fn view(running_transients: Memo<Vec<TransientCueState>>) -> impl IntoView {
         .iter()
         .map(|tcs| active_cue_row(tcs).into_any())
         .collect::<Vec<_>>();
+
     let cue_list =
         scroll(v_stack_from_iter(cue_rows).style(|s| s.flex_col().gap(theme().dim.space_sm)))
             .style(|s| {
@@ -359,13 +363,6 @@ pub fn view(running_transients: Memo<Vec<TransientCueState>>) -> impl IntoView {
                     .min_height(0.0)
                     .padding(theme().dim.space_sm)
             });
-
-    let controls_with_meter = h_stack((global_controls, audio_meter(0.9, 0.8))).style(|s| {
-        s.flex_row()
-            .width_full()
-            .items_center()
-            .gap(theme().dim.space_sm)
-    });
 
     v_stack((header, controls_with_meter, cue_list)).style(|s| {
         s.flex_col()
