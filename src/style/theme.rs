@@ -11,7 +11,7 @@
 use std::path::Path;
 
 use crossbeam_channel::Sender;
-use floem::reactive::{RwSignal, SignalGet, use_context};
+use floem::reactive::{Context, RwSignal, SignalGet};
 use notify::{RecursiveMode, Watcher};
 use serde::Deserialize;
 use tracing::{info, warn};
@@ -41,7 +41,7 @@ type ThemeSignal = RwSignal<Theme>;
 /// dependencies — the top-level `dyn_container` in `app_view` is the single
 /// dependency that triggers a full rebuild on theme change.
 pub fn theme() -> Theme {
-    let signal = use_context::<ThemeSignal>().expect("theme signal not provided");
+    let signal = Context::get::<ThemeSignal>().expect("theme signal not provided");
     signal.get_untracked()
 }
 
@@ -173,13 +173,13 @@ pub fn watch_theme_async(tx: Sender<Theme>) -> std::pin::Pin<Box<dyn Future<Outp
 mod tests {
     use super::*;
     use floem::peniko::Color;
-    use floem::text::Weight;
+    use floem::text::FontWeight;
 
     #[test]
     fn parses_dark_toml_with_defaults() {
         let t = parse_theme(include_str!("../../themes/base.toml"));
-        assert_eq!(t.color.bg_app, Color::rgb8(0x18, 0x19, 0x26));
-        assert_eq!(t.color.text_primary, Color::rgb8(0xca, 0xd3, 0xf5));
+        assert_eq!(t.color.bg_app, Color::from_rgb8(0x18, 0x19, 0x26));
+        assert_eq!(t.color.text_primary, Color::from_rgb8(0xca, 0xd3, 0xf5));
         assert_eq!(t.dim.space_xs, 4.0);
         assert_eq!(t.dim.space_md, 12.0);
     }

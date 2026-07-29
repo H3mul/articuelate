@@ -58,7 +58,7 @@ col_time = 70.0
 col_menu = 24.0
 
 # Micro dimensions for LED meters & status pips
-led_dot = 5.0
+led_dot = 6.0
 meter_width_sm = 6.0
 meter_width_md = 8.0
 dot_sm = 8.0
@@ -134,7 +134,7 @@ status_error_bg_12  = "#ED87961F"  # rgba(237, 135, 150, 0.12)
 status_group_bg_25  = "#F5A97F40"  # rgba(245, 169, 127, 0.25)
 border_divider_40   = "#18192666"  # rgba(24, 25, 38, 0.40)
 text_disabled_50    = "#A5ADCB80"  # rgba(165, 173, 203, 0.50)
-element_border_25   = "#363A4F40"
+element_border_25   = "#363A4FB3"
 
 # --- Slider Colors ---
 slider_track        = "#11121C"  # var(--color-element)

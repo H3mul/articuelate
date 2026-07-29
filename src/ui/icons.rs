@@ -4,10 +4,9 @@
 //! UI never needs to import lucide-floem directly. Icon sizes are bound to
 //! `ThemeDimensions` via the `app_icon` helper.
 
-use floem::peniko::Color;
-use floem::style::Style;
-use floem::views::Decorators;
 use floem::IntoView;
+use floem::peniko::Color;
+use floem::views::Decorators;
 use lucide_floem::Icon;
 
 /// All icons used in the application, mapped from the prototype's `AppIconName`.
@@ -18,6 +17,7 @@ pub enum AppIcon {
     Stop,
     Panic,
     SkipBack,
+    #[allow(dead_code)]
     Go,
     // Cue types
     Music,
@@ -27,8 +27,11 @@ pub enum AppIcon {
     Spline,
     // Actions
     Plus,
+    #[allow(dead_code)]
     Trash2,
+    #[allow(dead_code)]
     Pencil,
+    #[allow(dead_code)]
     Copy,
     FileAudio,
     // UI
@@ -38,12 +41,16 @@ pub enum AppIcon {
     Rows2,
     Clock,
     MousePointerClick,
+    #[allow(dead_code)]
     ChevronDown,
     GripVertical,
     EllipsisVertical,
     // Panel
+    #[allow(dead_code)]
     PanelBottom,
+    #[allow(dead_code)]
     PanelLeft,
+    #[allow(dead_code)]
     PanelRight,
 }
 
@@ -68,13 +75,13 @@ impl AppIcon {
             AppIcon::FileAudio => Icon::FileAudio,
             AppIcon::Settings => Icon::Settings,
             AppIcon::Save => Icon::Save,
-            AppIcon::Columns2 => Icon::Columns2,
-            AppIcon::Rows2 => Icon::Rows2,
+            AppIcon::Columns2 => Icon::Columns,
+            AppIcon::Rows2 => Icon::Rows,
             AppIcon::Clock => Icon::Clock,
             AppIcon::MousePointerClick => Icon::MousePointerClick,
             AppIcon::ChevronDown => Icon::ChevronDown,
             AppIcon::GripVertical => Icon::GripVertical,
-            AppIcon::EllipsisVertical => Icon::EllipsisVertical,
+            AppIcon::EllipsisVertical => Icon::MoreVertical,
             AppIcon::PanelBottom => Icon::PanelBottom,
             AppIcon::PanelLeft => Icon::PanelLeft,
             AppIcon::PanelRight => Icon::PanelRight,
@@ -93,6 +100,7 @@ pub fn app_icon(icon: AppIcon, size: f32, color: Color) -> impl IntoView {
 }
 
 /// Render an app icon with a default style (no explicit color, inherits).
+#[allow(dead_code)]
 pub fn app_icon_default(icon: AppIcon, size: f32) -> impl IntoView {
     icon.lucide_icon()
         .into_view()
@@ -100,6 +108,7 @@ pub fn app_icon_default(icon: AppIcon, size: f32) -> impl IntoView {
 }
 
 /// Render an icon as a `fill` variant (stroke-width 0, used for playhead).
+#[allow(dead_code)]
 pub fn app_icon_fill(icon: AppIcon, size: f32, color: Color) -> impl IntoView {
     let svg = icon.lucide_icon();
     // lucide-floem icons use stroke; we render them normally and the

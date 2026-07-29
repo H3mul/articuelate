@@ -9,7 +9,7 @@
 
 use floem::IntoView;
 use floem::reactive::{Memo, SignalGet};
-use floem::views::{Decorators, button, h_stack, label, text, v_stack};
+use floem::views::{Button, Decorators, Label, Stack};
 use lucide_floem::Icon;
 
 use crate::exec::ExecutionHandle;
@@ -29,16 +29,16 @@ pub fn view(
 ) -> impl IntoView {
     let events_panic = events.clone();
     let events_go = events.clone();
-    let panic_btn = button(v_stack((
+    let panic_btn = Button::new(Stack::vertical((
         app_icon(
             AppIcon::Panic,
             theme().dim.icon_sm as f32,
             theme().color.status_error,
         ),
-        text("Panic").style(|s| {
+        Label::new("Panic").style(|s| {
             s.color(theme().color.status_error)
                 .font_size(10.0)
-                .font_weight(floem::text::Weight::SEMIBOLD)
+                .font_weight(floem::text::FontWeight::SEMI_BOLD)
         }),
     )))
     .class(BtnPanic)
@@ -47,14 +47,14 @@ pub fn view(
         let _ = events_panic.send_user_intent(UiEvent::Panic);
     });
 
-    let go_btn = button(h_stack((
+    let go_btn = Button::new(Stack::horizontal((
         Icon::Play.into_view().style(move |s| {
             s.size(theme().dim.icon_md, theme().dim.icon_md)
                 .color(theme().color.status_running)
         }),
-        text("GO").style(|s| {
+        Label::new("GO").style(|s| {
             s.color(theme().color.text_primary)
-                .font_weight(floem::text::Weight::BOLD)
+                .font_weight(floem::text::FontWeight::BOLD)
                 .font_size(16.0)
         }),
     )))
@@ -65,17 +65,17 @@ pub fn view(
     });
 
     // Transport group: Panic + GO stacked
-    let transport_group = v_stack((panic_btn, go_btn)).class(TransportGroup);
+    let transport_group = Stack::vertical((panic_btn, go_btn)).class(TransportGroup);
 
     // Current cue conductor — derived from the active TransientCueState
     let current_cue = {
         let active = active_transient;
-        h_stack((
-            label(|| "Playing".to_string())
+        Stack::horizontal((
+            Label::derived(|| "Playing".to_string())
                 .class(BadgeSm)
                 .class(BadgeRunning)
                 .class(BadgeChip),
-            label(move || {
+            Label::derived(move || {
                 active
                     .get()
                     .map(|tcs| {
@@ -97,13 +97,15 @@ pub fn view(
     // Next cue conductor — derived from the next TransientCueState
     let next_cue = {
         let next = next_transient;
-        h_stack((
-            label(|| "Next".to_string()).class(BadgeSm).style(|s| {
-                s.background(theme().color.status_playhead_bg)
-                    .color(theme().color.status_playhead)
-                    .min_width(68.0)
-            }),
-            label(move || {
+        Stack::horizontal((
+            Label::derived(|| "Next".to_string())
+                .class(BadgeSm)
+                .style(|s| {
+                    s.background(theme().color.status_playhead_bg)
+                        .color(theme().color.status_playhead)
+                        .min_width(68.0)
+                }),
+            Label::derived(move || {
                 next.get()
                     .map(|tcs| {
                         let cue = tcs.workspace.get();
@@ -114,11 +116,11 @@ pub fn view(
             .style(|s| {
                 s.font_family(theme().font.body.family.clone())
                     .font_size(theme().font.heading.size as f32)
-                    .font_weight(floem::text::Weight::SEMIBOLD)
+                    .font_weight(floem::text::FontWeight::SEMI_BOLD)
                     .color(theme().color.text_primary)
             }),
-            v_stack((
-                label(move || {
+            Stack::vertical((
+                Label::derived(move || {
                     next.get()
                         .map(|tcs| {
                             let cue = tcs.workspace.get();
@@ -129,11 +131,11 @@ pub fn view(
                 .style(|s| {
                     s.font_family(theme().font.body.family.clone())
                         .font_size(theme().font.heading.size as f32)
-                        .font_weight(floem::text::Weight::SEMIBOLD)
+                        .font_weight(floem::text::FontWeight::SEMI_BOLD)
                         .color(theme().color.text_primary)
                         .min_width(0.0)
                 }),
-                label(move || {
+                Label::derived(move || {
                     next.get()
                         .map(|tcs| {
                             let cue = tcs.workspace.get();
@@ -144,7 +146,7 @@ pub fn view(
                 .style(|s| {
                     s.font_family(theme().font.body.family.clone())
                         .font_size(theme().font.mono_sm.size)
-                        .font_style(floem::text::Style::Italic)
+                        .font_style(floem::text::FontStyle::Italic)
                         .color(theme().color.text_disabled)
                         .min_width(0.0)
                 }),
@@ -154,14 +156,14 @@ pub fn view(
         .class(ConductorNext)
     };
 
-    let conductor = v_stack((current_cue, next_cue)).style(|s| {
+    let conductor = Stack::vertical((current_cue, next_cue)).style(|s| {
         s.flex_col()
             .min_width(0.0)
             .flex_grow(1.0)
             .gap(theme().dim.space_sm)
     });
 
-    h_stack((transport_group, conductor)).style(|s| {
+    Stack::horizontal((transport_group, conductor)).style(|s| {
         s.items_center()
             .width_full()
             .gap(theme().dim.space_sm)

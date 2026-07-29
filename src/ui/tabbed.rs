@@ -22,13 +22,11 @@
 //! outer edge facing the window border.
 
 use floem::peniko::Color;
-use floem::reactive::{RwSignal, SignalGet, SignalUpdate, create_rw_signal};
-use floem::views::{
-    Decorators, button, container, dyn_container, empty, h_stack_from_iter, v_stack_from_iter,
-};
+use floem::reactive::{RwSignal, SignalGet, SignalUpdate};
+use floem::views::{Button, Container, Decorators, dyn_container, Empty, Stack};
 use floem::{AnyView, IntoView};
 
-use crate::style::*;
+use crate::style::theme;
 
 /// A single tab: a stable name paired with a factory that (re)builds its view
 /// each time the tab becomes active.
@@ -87,7 +85,7 @@ impl TabbedWindow {
         let titles: Vec<&'static str> = self.tabs.iter().map(|(n, _)| *n).collect();
         let factories: Vec<Box<dyn Fn() -> AnyView>> =
             self.tabs.into_iter().map(|(_, f)| f).collect();
-        let active = create_rw_signal(0usize);
+        let active = RwSignal::new(0usize);
 
         let switcher = build_switcher(&titles, active, position);
 
@@ -104,21 +102,21 @@ impl TabbedWindow {
             });
 
         let inner: AnyView = match position {
-            TabPosition::Top => v_stack_from_iter([switcher, content.into_any()])
+            TabPosition::Top => Stack::vertical_from_iter([switcher, content.into_any()])
                 .style(|s| s.flex_col().size_full().min_height(0.0))
                 .into_any(),
-            TabPosition::Bottom => v_stack_from_iter([content.into_any(), switcher])
+            TabPosition::Bottom => Stack::vertical_from_iter([content.into_any(), switcher])
                 .style(|s| s.flex_col().size_full().min_height(0.0))
                 .into_any(),
-            TabPosition::Left => h_stack_from_iter([switcher, content.into_any()])
+            TabPosition::Left => Stack::horizontal_from_iter([switcher, content.into_any()])
                 .style(|s| s.flex_row().size_full().min_width(0.0))
                 .into_any(),
-            TabPosition::Right => h_stack_from_iter([content.into_any(), switcher])
+            TabPosition::Right => Stack::horizontal_from_iter([content.into_any(), switcher])
                 .style(|s| s.flex_row().size_full().min_width(0.0))
                 .into_any(),
         };
 
-        container(inner).style(|s| {
+        Container::new(inner).style(|s| {
             s.background(theme().color.bg_app)
                 .size_full()
                 .min_size(0.0, 0.0)
@@ -150,7 +148,7 @@ fn build_switcher(
         .collect();
 
     match position {
-        TabPosition::Top | TabPosition::Bottom => h_stack_from_iter(buttons)
+        TabPosition::Top | TabPosition::Bottom => Stack::horizontal_from_iter(buttons)
             .style(move |s| {
                 // Flush against the outer window border; only a small inner
                 // (content-side) padding so the tab row breathes.
@@ -165,7 +163,7 @@ fn build_switcher(
                     .padding_horiz(8.0)
             })
             .into_any(),
-        TabPosition::Left | TabPosition::Right => v_stack_from_iter(buttons)
+        TabPosition::Left | TabPosition::Right => Stack::vertical_from_iter(buttons)
             .style(move |s| {
                 let s = match position {
                     TabPosition::Left => s.padding_left(0.0).padding_right(4.0),
@@ -191,26 +189,36 @@ fn tab_button(
 ) -> AnyView {
     let indicator = tab_indicator(i, active, position);
 
-    let btn = button(name).action(move || active.set(i)).style(move |s| {
-        s.padding_horiz(14.0)
-            .padding_vert(6.0)
-            .font_size(12.0)
-            .border(0.0)
-            .color(if active.get() == i {
-                theme().color.text_primary
-            } else {
-                theme().color.text_secondary
-            })
-            .background(theme().color.bg_surface)
-            .border_radius(3.0)
-            .hover(|s| s.background(theme().color.bg_surface_overlay))
-    });
+    let btn = Button::new(name)
+        .action(move || active.set(i))
+        .style(move |s| {
+            s.padding_horiz(14.0)
+                .padding_vert(6.0)
+                .font_size(12.0)
+                .border(0.0)
+                .color(if active.get() == i {
+                    theme().color.text_primary
+                } else {
+                    theme().color.text_secondary
+                })
+                .background(theme().color.bg_surface)
+                .border_radius(3.0)
+                .hover(|s| s.background(theme().color.bg_surface_overlay))
+        });
 
     match position {
-        TabPosition::Top => v_stack_from_iter([indicator.into_any(), btn.into_any()]).into_any(),
-        TabPosition::Bottom => v_stack_from_iter([btn.into_any(), indicator.into_any()]).into_any(),
-        TabPosition::Left => h_stack_from_iter([indicator.into_any(), btn.into_any()]).into_any(),
-        TabPosition::Right => h_stack_from_iter([btn.into_any(), indicator.into_any()]).into_any(),
+        TabPosition::Top => {
+            Stack::vertical_from_iter([indicator.into_any(), btn.into_any()]).into_any()
+        }
+        TabPosition::Bottom => {
+            Stack::vertical_from_iter([btn.into_any(), indicator.into_any()]).into_any()
+        }
+        TabPosition::Left => {
+            Stack::horizontal_from_iter([indicator.into_any(), btn.into_any()]).into_any()
+        }
+        TabPosition::Right => {
+            Stack::horizontal_from_iter([btn.into_any(), indicator.into_any()]).into_any()
+        }
     }
 }
 
@@ -218,7 +226,7 @@ fn tab_button(
 /// the switcher (above for `Top`, below for `Bottom`, left for `Left`, right
 /// for `Right`). Transparent when the tab is inactive.
 fn tab_indicator(i: usize, active: RwSignal<usize>, position: TabPosition) -> impl IntoView {
-    empty().style(move |s| {
+    Empty::new().style(move |s| {
         let line = if active.get() == i {
             theme().color.status_playhead
         } else {

@@ -6,10 +6,10 @@ default-run = "articuelate"
 description = "Articuelate - a native, Floem-based audio cue system inspired by Lapce"
 
 [dependencies]
-floem = { version = "0.2", features = ["tokio"] }
+floem = { git = "https://github.com/lapce/floem", rev = "778bb5", features = ["tokio", "crossbeam"] }
 fastrand = "2"
 im = "15"
-lucide-floem = "0.2"
+lucide-floem = { git = "https://github.com/H3mul/lucide-floem.git", rev = "333af3b" }
 tokio = { version = "1", features = ["macros", "rt", "rt-multi-thread", "sync", "time"] }
 cpal = "0.15"
 ringbuf = "0.4"
@@ -26,3 +26,6 @@ async-trait = "0.1"
 thiserror = "2"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", default-features = false, features = ["env-filter", "fmt"] }
+
+[patch.crates-io]
+floem = { git = "https://github.com/lapce/floem", rev = "778bb5" }

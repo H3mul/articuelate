@@ -1,11 +1,8 @@
 //! Context-dependent detail panel — bottom inspector for selected cue.
 
 use floem::IntoView;
-use floem::reactive::{Memo, RwSignal, SignalGet, SignalUpdate, create_rw_signal};
-use floem::views::{
-    Decorators, button, container, empty, h_stack, h_stack_from_iter, label, scroll, text_input,
-    v_stack,
-};
+use floem::reactive::{Memo, RwSignal, SignalGet, SignalUpdate};
+use floem::views::{Button, Container, Decorators, Empty, Label, Stack, TextInput};
 
 use crate::model::{CueColor, CueKind, TransientCueState, TriggerCondition};
 use crate::style::theme;
@@ -21,18 +18,18 @@ const COLOR_ORDER: &[CueColor] = &[
 ];
 
 fn field_label(text: &'static str) -> impl IntoView {
-    label(|| text.to_string()).style(|s| {
+    Label::derived(|| text.to_string()).style(|s| {
         s.font_family(theme().font.mono_sm.family.clone())
             .font_size(theme().font.mono_sm.size)
-            .font_weight(floem::text::Weight::SEMIBOLD)
+            .font_weight(floem::text::FontWeight::SEMI_BOLD)
             .color(theme().color.text_disabled)
     })
 }
 
 fn text_field(label_text: &'static str, value: String, mono: bool) -> impl IntoView {
-    v_stack((
+    Stack::vertical((
         field_label(label_text),
-        text_input(create_rw_signal(value)).style(move |s| {
+        TextInput::new(RwSignal::new(value)).style(move |s| {
             s.height(theme().dim.control_sm)
                 .font_family(if mono {
                     theme().font.mono_sm.family.clone()
@@ -56,15 +53,15 @@ fn text_field(label_text: &'static str, value: String, mono: bool) -> impl IntoV
 
 fn duration_field(label_text: &'static str, value: String) -> impl IntoView {
     let v = value;
-    v_stack((
+    Stack::vertical((
         field_label(label_text),
-        h_stack((
-            label(move || v.clone()).style(|s| {
+        Stack::horizontal((
+            Label::derived(move || v.clone()).style(|s| {
                 s.font_family(theme().font.mono_sm.family.clone())
                     .font_size(theme().font.body.size)
                     .color(theme().color.text_primary)
             }),
-            label(|| "(derived from media)".to_string()).style(|s| {
+            Label::derived(|| "(derived from media)".to_string()).style(|s| {
                 s.font_family(theme().font.mono_sm.family.clone())
                     .font_size(theme().font.mono_sm.size)
                     .color(theme().color.text_disabled)
@@ -76,10 +73,10 @@ fn duration_field(label_text: &'static str, value: String) -> impl IntoView {
 }
 
 fn trigger_selector(initial: TriggerCondition) -> impl IntoView {
-    let mode = create_rw_signal(initial);
-    v_stack((
+    let mode = RwSignal::new(initial);
+    Stack::vertical((
         field_label("Trigger Condition"),
-        h_stack((
+        Stack::horizontal((
             trigger_btn("Playhead", TriggerCondition::Playhead, mode),
             trigger_btn(
                 "With Cue",
@@ -111,7 +108,7 @@ fn trigger_btn(
     mode: RwSignal<TriggerCondition>,
 ) -> impl IntoView {
     let tag = this.discriminant_tag();
-    button(label_text)
+    Button::new(label_text)
         .action(move || mode.set(this))
         .style(move |s| {
             let is_active = mode.get().discriminant_tag() == tag;
@@ -120,7 +117,7 @@ fn trigger_btn(
                 .padding_vert(theme().dim.space_sm)
                 .font_family(theme().font.body.family.clone())
                 .font_size(12.0)
-                .font_weight(floem::text::Weight::MEDIUM)
+                .font_weight(floem::text::FontWeight::MEDIUM)
                 .outline(0.0)
                 .background(if is_active {
                     theme().color.bg_selection
@@ -144,7 +141,7 @@ fn trigger_btn(
 }
 
 fn color_picker(initial: CueColor) -> impl IntoView {
-    let color = create_rw_signal(initial);
+    let color = RwSignal::new(initial);
     let swatches: Vec<_> = COLOR_ORDER
         .iter()
         .map(|c| {
@@ -157,7 +154,7 @@ fn color_picker(initial: CueColor) -> impl IntoView {
                 CueColor::Blue => theme().color.status_playhead,
                 CueColor::Purple => theme().color.status_standby,
             };
-            container(empty())
+            Container::new(Empty::new())
                 .style(move |s| {
                     let is_active = color.get() == this;
                     s.size(theme().dim.space_xl, theme().dim.space_xl)
@@ -168,17 +165,16 @@ fn color_picker(initial: CueColor) -> impl IntoView {
                             s.border(2.0).border_color(theme().color.text_primary)
                         })
                 })
-                .on_click(move |_| {
+                .on_event_stop(floem::event::listener::Click, move |_cx, _| {
                     color.set(this);
-                    floem::event::EventPropagation::Stop
                 })
                 .into_any()
         })
         .collect();
 
-    v_stack((
+    Stack::vertical((
         field_label("Highlight"),
-        h_stack_from_iter(swatches).style(|s| s.items_center().gap(theme().dim.space_sm)),
+        Stack::horizontal_from_iter(swatches).style(|s| s.items_center().gap(theme().dim.space_sm)),
     ))
     .style(|s| s.flex_col().gap(theme().dim.space_sm))
 }
@@ -208,12 +204,12 @@ fn general_tab(tcs: &TransientCueState) -> impl IntoView {
         }
     };
 
-    h_stack((
-        v_stack((
+    Stack::horizontal((
+        Stack::vertical((
             text_field("Name", name, false),
-            v_stack((
+            Stack::vertical((
                 field_label("Notes"),
-                text_input(create_rw_signal(notes)).style(move |s| {
+                TextInput::new(RwSignal::new(notes)).style(move |s| {
                     s.height(theme().dim.textarea_height)
                         .border_radius(theme().dim.radius_sm)
                         .border(1.0)
@@ -232,13 +228,13 @@ fn general_tab(tcs: &TransientCueState) -> impl IntoView {
             .style(|s| s.flex_col().gap(theme().dim.space_xs)),
         ))
         .style(|s| s.flex_col().gap(theme().dim.space_lg)),
-        v_stack((
+        Stack::vertical((
             text_field("Pre-delay", pre_wait, true),
             text_field("Post-delay", post_wait, true),
             duration_field("Duration", duration_str),
         ))
         .style(|s| s.flex_col().gap(theme().dim.space_lg)),
-        v_stack((
+        Stack::vertical((
             trigger_selector(cue.trigger_condition),
             color_picker(cue.color),
         ))
@@ -261,25 +257,25 @@ fn audio_tab(tcs: &TransientCueState) -> impl IntoView {
     };
 
     let media_file = file_path.to_string_lossy().to_string();
-    let vol_pct = create_rw_signal(volume);
+    let vol_pct = RwSignal::new(volume);
 
-    v_stack((
-        v_stack((
+    Stack::vertical((
+        Stack::vertical((
             field_label("Media File"),
-            h_stack((
+            Stack::horizontal((
                 app_icon(
                     AppIcon::FileAudio,
                     theme().dim.icon_sm as f32,
                     theme().color.status_playhead,
                 ),
-                label(move || media_file.clone()).style(|s| {
+                Label::derived(move || media_file.clone()).style(|s| {
                     s.font_family(theme().font.mono_sm.family.clone())
                         .font_size(theme().font.mono_sm.size)
                         .color(theme().color.text_primary)
                         .min_width(0.0)
                         .flex_grow(1.0)
                 }),
-                button("Browse…").style(|s| {
+                Button::new("Browse…").style(|s| {
                     s.height(theme().dim.control_sm)
                         .padding_horiz(theme().dim.space_sm)
                         .padding_vert(theme().dim.space_xs)
@@ -307,21 +303,21 @@ fn audio_tab(tcs: &TransientCueState) -> impl IntoView {
             }),
         ))
         .style(|s| s.flex_col().gap(theme().dim.space_xs)),
-        v_stack((
+        Stack::vertical((
             field_label("Target Volume"),
-            h_stack((
-                label(move || format!("{:.0}%", vol_pct.get() * 100.0)).style(|s| {
+            Stack::horizontal((
+                Label::derived(move || format!("{:.0}%", vol_pct.get() * 100.0)).style(|s| {
                     s.font_family(theme().font.mono_sm.family.clone())
                         .font_size(theme().font.mono_sm.size)
                         .color(theme().color.text_secondary)
                         .min_width(40.0)
                 }),
-                label(|| "".to_string()).style(|s| s.flex_grow(1.0)),
+                Label::new("").style(|s| s.flex_grow(1.0)),
             ))
             .style(|s| s.items_center().gap(theme().dim.space_sm)),
         ))
         .style(|s| s.flex_col().gap(theme().dim.space_sm)),
-        h_stack((
+        Stack::horizontal((
             text_field("Fade In", format!("{:.1}s", fade_in), true),
             text_field("Fade Out", format!("{:.1}s", fade_out), true),
         ))
@@ -336,7 +332,7 @@ fn osc_tab(tcs: &TransientCueState) -> impl IntoView {
         CueKind::Osc { task, host, port } => (task.clone(), host.clone(), *port),
         _ => ("/projector/power 1".into(), "10.0.0.42".into(), 3333),
     };
-    v_stack((
+    Stack::vertical((
         text_field("OSC Task", task, false),
         text_field("Host", host, false),
         text_field("Port", port.to_string(), true),
@@ -345,8 +341,8 @@ fn osc_tab(tcs: &TransientCueState) -> impl IntoView {
 }
 
 fn empty_state() -> impl IntoView {
-    container(
-        label(|| "Select a cue to edit its settings".to_string()).style(|s| {
+    Container::new(
+        Label::derived(|| "Select a cue to edit its settings".to_string()).style(|s| {
             s.color(theme().color.text_disabled)
                 .font_size(theme().font.body.size)
         }),
@@ -359,7 +355,7 @@ fn tab_button(
     active: RwSignal<&'static str>,
     this: &'static str,
 ) -> impl IntoView {
-    button(label)
+    Button::new(label)
         .action(move || active.set(this))
         .style(move |s| {
             let is_active = active.get() == this;
@@ -368,7 +364,7 @@ fn tab_button(
                 .padding_vert(theme().dim.space_sm)
                 .font_family(theme().font.body.family.clone())
                 .font_size(12.0)
-                .font_weight(floem::text::Weight::MEDIUM)
+                .font_weight(floem::text::FontWeight::MEDIUM)
                 .outline(0.0)
                 .background(if is_active {
                     theme().color.bg_selection
@@ -393,7 +389,7 @@ fn tab_button(
 }
 
 pub fn view(selected_transient: Memo<Option<TransientCueState>>) -> impl IntoView {
-    let active_tab: RwSignal<&'static str> = create_rw_signal("general");
+    let active_tab: RwSignal<&'static str> = RwSignal::new("general");
 
     let selected = selected_transient.get();
 
@@ -410,7 +406,7 @@ pub fn view(selected_transient: Memo<Option<TransientCueState>>) -> impl IntoVie
         t
     };
 
-    let tab_bar = h_stack_from_iter(
+    let tab_bar = Stack::horizontal_from_iter(
         tabs.iter()
             .map(|t| {
                 let label_str = match *t {
@@ -434,14 +430,14 @@ pub fn view(selected_transient: Memo<Option<TransientCueState>>) -> impl IntoVie
         let cue = tcs.workspace.get();
         format!("{} · {}", cue.id, cue.name)
     });
-    let header_info = h_stack((
-        label(|| "Cue Settings".to_string()).style(|s| {
+    let header_info = Stack::horizontal((
+        Label::derived(|| "Cue Settings".to_string()).style(|s| {
             s.font_family(theme().font.body.family.clone())
                 .font_size(theme().font.body.size)
-                .font_weight(floem::text::Weight::SEMIBOLD)
+                .font_weight(floem::text::FontWeight::SEMI_BOLD)
                 .color(theme().color.text_primary)
         }),
-        label(move || selected_cue_name.clone().unwrap_or_default()).style(|s| {
+        Label::derived(move || selected_cue_name.clone().unwrap_or_default()).style(|s| {
             s.font_family(theme().font.mono_sm.family.clone())
                 .font_size(theme().font.mono_sm.size)
                 .color(theme().color.text_disabled)
@@ -455,7 +451,7 @@ pub fn view(selected_transient: Memo<Option<TransientCueState>>) -> impl IntoVie
             .border_color(theme().color.element_border)
     });
 
-    let header = h_stack((tab_bar, header_info)).style(|s| {
+    let header = Stack::horizontal((tab_bar, header_info)).style(|s| {
         s.flex_shrink(0.0)
             .items_center()
             .border_bottom(1.0)
@@ -470,7 +466,7 @@ pub fn view(selected_transient: Memo<Option<TransientCueState>>) -> impl IntoVie
                 "osc" => osc_tab(tcs).into_any(),
                 _ => general_tab(tcs).into_any(),
             };
-            scroll(tab_content)
+            (tab_content)
                 .style(|s| {
                     s.flex_grow(1.0)
                         .min_height(0.0)
@@ -481,7 +477,7 @@ pub fn view(selected_transient: Memo<Option<TransientCueState>>) -> impl IntoVie
         None => empty_state().into_any(),
     };
 
-    v_stack((header, content)).style(|s| {
+    Stack::vertical((header, content)).style(|s| {
         s.flex_col()
             .height(theme().dim.detail_height)
             .flex_shrink(0.0)

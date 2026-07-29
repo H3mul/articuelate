@@ -121,7 +121,7 @@ pub fn global_stylesheet(s: Style) -> Style {
         .class(ScrollClass, |s| {
             s.size_full()
                 .min_size(0.0, 0.0)
-                .apply_custom(ScrollCustomStyle::new().handle_thickness(theme().dim.space_xs))
+                .apply_custom(ScrollCustomStyle::new().handle_background(theme().color.border_subtle))
         })
 
         // ─── Cuelist Grid ──────────────────────────────────────────────
@@ -278,7 +278,7 @@ pub fn global_stylesheet(s: Style) -> Style {
                 .cursor(CursorStyle::Pointer)
                 .height(theme().dim.control_md)
                 .width(theme().dim.btn_panic_width)
-                .font_weight(floem::text::Weight::SEMIBOLD)
+                .font_weight(floem::text::FontWeight::SEMI_BOLD)
                 .font_size(12.0)
                 .hover(|s| s.background(theme().color.element_bg_hover))
                 .active(|s| {
@@ -302,7 +302,7 @@ pub fn global_stylesheet(s: Style) -> Style {
                 .width(theme().dim.btn_go_width)
                 .height(theme().dim.control_md)
                 .font_size(16.0)
-                .font_weight(floem::text::Weight::BOLD)
+                .font_weight(floem::text::FontWeight::BOLD)
                 .hover(|s| s.background(theme().color.status_running_bg))
                 .active(|s| {
                     s.background(theme().color.element_bg_active)
@@ -371,7 +371,7 @@ pub fn global_stylesheet(s: Style) -> Style {
         .class(FieldLabel, |s| {
             s.font_family(theme().font.mono_sm.family.clone())
                 .font_size(theme().font.mono_sm.size)
-                .font_weight(floem::text::Weight::SEMIBOLD)
+                .font_weight(floem::text::FontWeight::SEMI_BOLD)
                 .color(theme().color.text_disabled)
         })
         .class(TextMonoSm, |s| {
@@ -434,7 +434,7 @@ pub fn global_stylesheet(s: Style) -> Style {
         .class(InspectorSectionHeader, |s| {
             s.font_family(theme().font.mono_sm.family.clone())
                 .font_size(10.0)
-                .font_weight(floem::text::Weight::BOLD)
+                .font_weight(floem::text::FontWeight::BOLD)
                 .color(theme().color.text_disabled)
                 .margin_bottom(theme().dim.space_xs)
         })
@@ -449,7 +449,7 @@ pub fn global_stylesheet(s: Style) -> Style {
                 .padding_vert(theme().dim.space_sm)
                 .font_family(theme().font.body.family.clone())
                 .font_size(12.0)
-                .font_weight(floem::text::Weight::MEDIUM)
+                .font_weight(floem::text::FontWeight::MEDIUM)
                 .outline(0.0)
                 .focus_visible(|s| s.border_color(theme().color.border_focus))
         })
@@ -462,7 +462,7 @@ pub fn global_stylesheet(s: Style) -> Style {
                 .padding_vert(theme().dim.space_sm)
                 .font_family(theme().font.body.family.clone())
                 .font_size(12.0)
-                .font_weight(floem::text::Weight::MEDIUM)
+                .font_weight(floem::text::FontWeight::MEDIUM)
                 .outline(0.0)
                 .background(theme().color.bg_selection)
                 .color(theme().color.text_primary)
@@ -476,7 +476,7 @@ pub fn global_stylesheet(s: Style) -> Style {
                 .padding_vert(theme().dim.space_sm)
                 .font_family(theme().font.body.family.clone())
                 .font_size(12.0)
-                .font_weight(floem::text::Weight::MEDIUM)
+                .font_weight(floem::text::FontWeight::MEDIUM)
                 .outline(0.0)
                 .background(theme().color.element_bg)
                 .color(theme().color.text_disabled)
@@ -494,7 +494,7 @@ pub fn global_stylesheet(s: Style) -> Style {
                 .padding_horiz(theme().dim.space_sm)
                 .font_family(theme().font.mono_sm.family.clone())
                 .font_size(theme().font.mono_sm.size)
-                .font_weight(floem::text::Weight::SEMIBOLD)
+                .font_weight(floem::text::FontWeight::SEMI_BOLD)
         })
         .class(BadgeNext, |s| {
             s.background(theme().color.status_playhead_bg)
@@ -560,7 +560,7 @@ pub fn global_stylesheet(s: Style) -> Style {
         .class(ActiveCueName, |s| {
             s.font_family(theme().font.body.family.clone())
                 .font_size(12.0)
-                .font_weight(floem::text::Weight::MEDIUM)
+                .font_weight(floem::text::FontWeight::MEDIUM)
                 .color(theme().color.text_primary)
                 .min_width(0.0)
         })

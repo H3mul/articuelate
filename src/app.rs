@@ -6,13 +6,10 @@ use std::sync::Arc;
 use arc_swap::ArcSwap;
 use crossbeam_channel::Receiver;
 
-use floem::ext_event::create_signal_from_channel;
+use floem::ext_event::update_signal_from_channel;
 
-use floem::reactive::{
-    ReadSignal, RwSignal, SignalGet, SignalUpdate, create_effect, create_memo, create_rw_signal,
-    provide_context,
-};
-use floem::views::{Decorators, dyn_container, v_stack};
+use floem::reactive::{Context, Effect, Memo, ReadSignal, RwSignal, SignalGet, SignalUpdate};
+use floem::views::{Decorators, Stack, dyn_container};
 use floem::window::WindowConfig;
 use floem::{Application, IntoView};
 
@@ -77,7 +74,7 @@ impl App {
 
         // ── Theme reload channel ──
         let (theme_tx, theme_rx) = crossbeam_channel::unbounded();
-        let theme_signal = create_rw_signal(load_theme());
+        let theme_signal = RwSignal::new(load_theme());
 
         // ── Assemble AppState from the channels ──
         let workspace_state = workspace.load_full();
@@ -123,22 +120,23 @@ impl App {
         Application::new()
             .window(
                 move |_| {
-                    let exec_state_signal_r =
-                        create_signal_from_channel::<Arc<ExecutionState>>(exec_state_rx);
+                    let exec_state_signal_r = RwSignal::new(None::<Arc<ExecutionState>>);
+                    update_signal_from_channel(exec_state_signal_r.write_only(), exec_state_rx);
 
                     // Provide the theme signal as context so `theme()` works
                     // anywhere in the view tree.
-                    provide_context(theme_signal);
+                    Context::provide(theme_signal);
 
                     // Bridge theme changes from the tokio thread into the Floem
                     // reactive system via a crossbeam channel, so that the
                     // RwSignal is always set on the Floem main thread.
-                    let theme_from_channel = create_signal_from_channel::<Theme>(theme_rx);
+                    let theme_from_channel = RwSignal::new(None::<Theme>);
+                    update_signal_from_channel(theme_from_channel.write_only(), theme_rx);
 
                     // A counter that bumps on theme change, driving a full
                     // rebuild via dyn_container.
-                    let theme_gen = create_rw_signal(0usize);
-                    create_effect(move |_| {
+                    let theme_gen = RwSignal::new(0usize);
+                    Effect::new(move |_| {
                         if let Some(theme) = theme_from_channel.get() {
                             theme_signal.set(theme);
                             theme_gen.update(|n| *n = n.wrapping_add(1));
@@ -149,7 +147,9 @@ impl App {
                     let exec = execution.clone();
                     dyn_container(
                         move || theme_gen.get(),
-                        move |_| app_view(state.clone(), exec_state_signal_r, exec.clone()),
+                        move |_| {
+                            app_view(state.clone(), exec_state_signal_r.read_only(), exec.clone())
+                        },
                     )
                     // Make the base view fill the window
                     .style(|s| s.size_full().min_size(0.0, 0.0))
@@ -174,13 +174,13 @@ fn app_view(
     // ── Derive memoised signals from AppState ──
     let cuelist_memo = {
         let s = app_state.clone();
-        create_memo(move |_| s.workspace.get().cuelist.clone())
+        Memo::new(move |_| s.workspace.get().cuelist.clone())
     };
 
     // Wire execution state from the watch channel into the AppState signal
     {
         let s = app_state.clone();
-        create_effect(move |_| {
+        Effect::new(move |_| {
             if let Some(state) = exec_state.get() {
                 s.execution.set(state.as_ref().clone());
             }
@@ -190,13 +190,13 @@ fn app_view(
     // ── Build a TransientCueState for the currently selected cue ──
     let selected_transient = {
         let s = app_state.clone();
-        create_memo(move |_| s.selected_cue.get().and_then(|id| s.cue_state(id)))
+        Memo::new(move |_| s.selected_cue.get().and_then(|id| s.cue_state(id)))
     };
 
     // ── Build TransientCueState for the active (playing) cue ──
     let active_transient = {
         let s = app_state.clone();
-        create_memo(move |_| {
+        Memo::new(move |_| {
             let playhead_id = match s.execution.get().playhead {
                 Playhead::Stopped => None,
                 Playhead::Playing(id) => Some(id),
@@ -208,7 +208,7 @@ fn app_view(
     // ── Build TransientCueState for the next cue (after playhead) ──
     let next_transient = {
         let s = app_state.clone();
-        create_memo(move |_| {
+        Memo::new(move |_| {
             let next_id = match s.execution.get().playhead {
                 Playhead::Stopped => None,
                 Playhead::Playing(current_id) => {
@@ -225,7 +225,7 @@ fn app_view(
     // ── Running cues for the media sidebar ──
     let running_transients = {
         let s = app_state.clone();
-        create_memo(move |_| {
+        Memo::new(move |_| {
             let exec = s.execution.get();
             let mut running: Vec<TransientCueState> = Vec::new();
             for (id, ces) in exec.cue_execution_state.iter() {
@@ -240,12 +240,12 @@ fn app_view(
     };
 
     let cue_count = cuelist_memo.get().len();
-    let selected_count_rw = create_rw_signal(0usize);
+    let selected_count_rw = RwSignal::new(0usize);
 
     // Track selected count
     {
         let s = app_state.clone();
-        create_effect(move |_| {
+        Effect::new(move |_| {
             if s.selected_cue.get().is_some() {
                 selected_count_rw.set(1);
             } else {
@@ -261,7 +261,7 @@ fn app_view(
     let status_bar_view = status_bar::view(selected_count_rw.get_untracked(), cue_count);
 
     // Left column: toolbar + cuelist
-    let main_view = v_stack((toolbar_view, cuelist_view))
+    let main_view = Stack::vertical((toolbar_view, cuelist_view))
         .style(|s| s.flex_col().min_width(0.0).flex_grow(1.0).height_full());
 
     let panel = PanelSystem::new()
@@ -271,7 +271,7 @@ fn app_view(
         .with_bottom(detail_view, Some(theme().dim.detail_height as f32))
         .build();
 
-    v_stack((panel, status_bar_view))
+    Stack::vertical((panel, status_bar_view))
         .style(|s| {
             s.flex_col()
                 .width_full()

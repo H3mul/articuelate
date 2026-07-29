@@ -3,13 +3,10 @@
 //! Uses Floem's virtual_list for performance with large show files.
 
 use floem::IntoView;
-use floem::event::EventPropagation;
-use floem::reactive::{SignalGet, SignalUpdate, SignalWith, create_memo};
+use floem::reactive::{Effect, RwSignal, SignalGet, SignalUpdate, SignalWith};
 use floem::style::AlignItems;
-use floem::views::{
-    Decorators, VirtualDirection, VirtualItemSize, container, empty, h_stack, label, scroll, text,
-    v_stack, virtual_list,
-};
+use floem::views::scroll::Scroll;
+use floem::views::{Container, Decorators, Empty, Label, Stack, virtual_list};
 
 use std::sync::Arc;
 
@@ -46,7 +43,7 @@ fn time_cell(value: String, fill: Option<f64>, running: bool) -> impl IntoView {
     let fill_pct = fill.unwrap_or(0.0).min(1.0).max(0.0);
     let has_fill = fill.is_some() && fill_pct > 0.0;
 
-    container(text(value).style(move |s| {
+    let label = Label::new(value).style(move |s| {
         s.font_family(theme().font.mono_sm.family.clone())
             .font_size(if running {
                 theme().font.body.size
@@ -60,8 +57,8 @@ fn time_cell(value: String, fill: Option<f64>, running: bool) -> impl IntoView {
             })
             .min_width(0.0)
             .padding_horiz(6.0)
-    }))
-    .style(move |s| {
+    });
+    Container::new(label).style(move |s| {
         let mut s = s
             .height(theme().dim.time_cell)
             .min_width(0.0)
@@ -138,7 +135,7 @@ fn cue_row(position: usize, tcs: TransientCueState, app_state: AppState) -> impl
         None
     };
 
-    let row = h_stack((
+    let row = Stack::horizontal((
         // Drag handle
         app_icon(
             AppIcon::GripVertical,
@@ -151,7 +148,7 @@ fn cue_row(position: usize, tcs: TransientCueState, app_state: AppState) -> impl
                 .justify_center()
         }),
         // Playhead indicator
-        container(if is_standby || is_running {
+        Container::new(if is_standby || is_running {
             app_icon(
                 AppIcon::Play,
                 theme().dim.icon_sm as f32,
@@ -163,7 +160,7 @@ fn cue_row(position: usize, tcs: TransientCueState, app_state: AppState) -> impl
             )
             .into_any()
         } else {
-            empty().into_any()
+            Empty::new().into_any()
         })
         .style(|s| {
             s.width(theme().dim.col_playhead)
@@ -171,7 +168,7 @@ fn cue_row(position: usize, tcs: TransientCueState, app_state: AppState) -> impl
                 .justify_center()
         }),
         // Cue number (derived from position in cuelist)
-        label(move || number.clone()).style(move |s| {
+        Label::derived(move || number.clone()).style(move |s| {
             s.width(theme().dim.col_cue_number)
                 .font_family(theme().font.mono_sm.family.clone())
                 .font_size(theme().font.mono_sm.size)
@@ -183,16 +180,16 @@ fn cue_row(position: usize, tcs: TransientCueState, app_state: AppState) -> impl
                 .min_width(0.0)
         }),
         // Name + icon
-        h_stack((
+        Stack::horizontal((
             app_icon(
                 kind_icon(&kind),
                 theme().dim.icon_sm as f32,
                 theme().color.text_disabled,
             ),
-            label(move || name.clone()).style(move |s| {
+            Label::derived(move || name.clone()).style(move |s| {
                 s.font_family(theme().font.body.family.clone())
                     .font_size(theme().font.body.size)
-                    .font_weight(floem::text::Weight::MEDIUM)
+                    .font_weight(floem::text::FontWeight::MEDIUM)
                     .color(theme().color.text_primary)
                     .min_width(0.0)
             }),
@@ -204,7 +201,7 @@ fn cue_row(position: usize, tcs: TransientCueState, app_state: AppState) -> impl
                 .gap(theme().dim.space_sm)
         }),
         // Target
-        label(move || target.clone()).style(|s| {
+        Label::derived(move || target.clone()).style(|s| {
             s.font_family(theme().font.mono_sm.family.clone())
                 .font_size(theme().font.mono_sm.size)
                 .color(theme().color.text_disabled)
@@ -241,7 +238,7 @@ fn cue_row(position: usize, tcs: TransientCueState, app_state: AppState) -> impl
 
     let row_id_clone = id;
     let selected = app_state.selected_cue;
-    container(row)
+    Container::new(row)
         .style(move |s| {
             let mut s = s
                 .width_full()
@@ -272,9 +269,8 @@ fn cue_row(position: usize, tcs: TransientCueState, app_state: AppState) -> impl
             }
             s
         })
-        .on_click(move |_| {
+        .on_event_stop(floem::event::listener::Click, move |_cx, _| {
             selected.set(Some(row_id_clone));
-            EventPropagation::Stop
         })
         .into_any()
 }
@@ -283,24 +279,25 @@ pub fn view(
     cuelist: impl SignalGet<Arc<Cuelist>> + SignalWith<Arc<Cuelist>> + Copy + 'static,
     app_state: AppState,
 ) -> impl IntoView {
-    let filtered = {
+    let filtered = RwSignal::new(Vec::<(usize, TransientCueState)>::new());
+    {
+        let filtered = filtered;
         let s = app_state.clone();
-        create_memo(move |_| {
-            cuelist.with(|list| {
+        Effect::new(move |_| {
+            let items = cuelist.with(|list| {
                 list.iter()
                     .enumerate()
                     .filter_map(|(i, cue)| s.cue_state(cue.id).map(|tcs| (i + 1, tcs)))
-                    .collect::<im::Vector<(usize, TransientCueState)>>()
-            })
-        })
-    };
+                    .collect::<Vec<(usize, TransientCueState)>>()
+            });
+            filtered.set(items);
+        });
+    }
 
     let rows = virtual_list(
-        VirtualDirection::Vertical,
-        VirtualItemSize::Fixed(Box::new(|| theme().dim.height_cue_row)),
-        move || filtered.get(),
+        move || filtered,
         |(_, tcs)| tcs.id,
-        move |(pos, tcs)| cue_row(pos, tcs, app_state.clone()),
+        move |_index, (pos, tcs)| cue_row(pos, tcs, app_state.clone()),
     )
     .style(|s| {
         s.width_full()
@@ -310,7 +307,7 @@ pub fn view(
             .align_items(AlignItems::Stretch)
     });
 
-    let rows = scroll(rows).style(|s| {
+    let rows = Scroll::new(rows).style(|s| {
         s.width_full()
             .flex_col()
             .min_size(0.0, 0.0)
@@ -318,48 +315,48 @@ pub fn view(
             .flex_grow(1.0)
     });
 
-    let header = h_stack((
-        text("").style(|s| s.width(theme().dim.col_drag)),
-        text("").style(|s| s.width(theme().dim.col_playhead)),
-        text("CUE").style(|s| {
+    let header = Stack::horizontal((
+        Label::new("").style(|s| s.width(theme().dim.col_drag)),
+        Label::new("").style(|s| s.width(theme().dim.col_playhead)),
+        Label::new("CUE").style(|s| {
             s.width(theme().dim.col_cue_number)
                 .color(theme().color.text_secondary)
                 .font_family(theme().font.mono_sm.family.clone())
                 .font_size(theme().font.mono_sm.size)
         }),
-        text("NAME").style(|s| {
+        Label::new("NAME").style(|s| {
             s.flex_grow(1.0)
                 .color(theme().color.text_secondary)
                 .font_family(theme().font.mono_sm.family.clone())
                 .font_size(theme().font.mono_sm.size)
                 .min_width(0.0)
         }),
-        text("TARGET").style(|s| {
+        Label::new("TARGET").style(|s| {
             s.flex_grow(1.0)
                 .color(theme().color.text_secondary)
                 .font_family(theme().font.mono_sm.family.clone())
                 .font_size(theme().font.mono_sm.size)
                 .min_width(0.0)
         }),
-        text("PRE").style(|s| {
+        Label::new("PRE").style(|s| {
             s.width(theme().dim.col_time)
                 .color(theme().color.text_secondary)
                 .font_family(theme().font.mono_sm.family.clone())
                 .font_size(theme().font.mono_sm.size)
         }),
-        text("DURATION").style(|s| {
+        Label::new("DURATION").style(|s| {
             s.width(theme().dim.col_time)
                 .color(theme().color.text_secondary)
                 .font_family(theme().font.mono_sm.family.clone())
                 .font_size(theme().font.mono_sm.size)
         }),
-        text("POST").style(|s| {
+        Label::new("POST").style(|s| {
             s.width(theme().dim.col_time)
                 .color(theme().color.text_secondary)
                 .font_family(theme().font.mono_sm.family.clone())
                 .font_size(theme().font.mono_sm.size)
         }),
-        text("").style(|s| s.width(theme().dim.col_menu)),
+        Label::new("").style(|s| s.width(theme().dim.col_menu)),
     ))
     .style(|s| {
         s.items_center()
@@ -374,7 +371,7 @@ pub fn view(
             .background(theme().color.bg_surface)
     });
 
-    let add_btn = container(app_icon(
+    let add_btn = Container::new(app_icon(
         AppIcon::Plus,
         theme().dim.icon_sm as f32,
         theme().color.text_secondary,
@@ -386,7 +383,7 @@ pub fn view(
             .height(theme().dim.space_xl)
     });
 
-    let footer = container(add_btn).style(|s| {
+    let footer = Container::new(add_btn).style(|s| {
         s.width_full()
             .items_center()
             .padding_vert(theme().dim.space_md)
@@ -395,7 +392,7 @@ pub fn view(
             .border_color(theme().color.border_divider_40)
     });
 
-    v_stack((header, rows, footer)).style(|s| {
+    Stack::vertical((header, rows, footer)).style(|s| {
         s.flex_col()
             .min_size(0.0, 0.0)
             .width_full()

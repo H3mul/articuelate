@@ -5,7 +5,7 @@
 //! `Arc<Cuelist>` via reactive signals; the execution engine reads from an
 //! `ArcSwap<WorkspaceState>`.
 
-use floem::reactive::{Memo, RwSignal, SignalGet, create_memo};
+use floem::reactive::{Memo, RwSignal, SignalGet};
 use serde::{Deserialize, Serialize};
 use serde_with::{DurationMicroSeconds, serde_as};
 use std::collections::HashMap;
@@ -49,6 +49,7 @@ pub enum CueColor {
 
 impl CueColor {
     /// Human-readable label matching the prototype.
+    #[allow(dead_code)]
     pub fn as_str(&self) -> &'static str {
         match self {
             CueColor::None => "none",
@@ -176,6 +177,7 @@ impl Cuelist {
         self.order.len()
     }
 
+    #[allow(dead_code)]
     pub fn is_empty(&self) -> bool {
         self.order.is_empty()
     }
@@ -225,7 +227,9 @@ pub enum PlaybackStatus {
     Idle,
     Standby,
     Playing,
+    #[allow(dead_code)]
     Paused,
+    #[allow(dead_code)]
     Error,
 }
 
@@ -300,7 +304,7 @@ impl TransientCueState {
 
         Some(Self {
             id,
-            workspace: create_memo(move |_| {
+            workspace: Memo::new(move |_| {
                 app_state
                     .workspace
                     .get()
@@ -309,7 +313,7 @@ impl TransientCueState {
                     .cloned()
                     .unwrap_or_else(|| initial_cue.clone())
             }),
-            execution: create_memo(move |_| {
+            execution: Memo::new(move |_| {
                 app_state
                     .execution
                     .get()
