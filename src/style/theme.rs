@@ -190,13 +190,13 @@ mod tests {
         assert_eq!(t.font.mono_xl.family, "JetBrains Mono");
         assert_eq!(t.font.mono_xl.size, 24.0);
         assert_eq!(t.font.mono_xl.line_height, 30.0);
-        assert_eq!(t.font.mono_xl.weight, Weight::BOLD);
+        assert_eq!(t.font.mono_xl.weight, FontWeight::BOLD);
         assert_eq!(t.font.mono_sm.family, "JetBrains Mono");
         assert_eq!(t.font.mono_sm.size, 11.0);
-        assert_eq!(t.font.mono_sm.weight, Weight::NORMAL);
+        assert_eq!(t.font.mono_sm.weight, FontWeight::NORMAL);
         assert_eq!(t.font.heading.family, "Segoe UI");
-        assert_eq!(t.font.heading.weight, Weight::SEMIBOLD);
-        assert_eq!(t.font.body_bold.weight, Weight::MEDIUM);
-        assert_eq!(t.font.body.weight, Weight::NORMAL);
+        assert_eq!(t.font.heading.weight, FontWeight::SEMI_BOLD);
+        assert_eq!(t.font.body_bold.weight, FontWeight::MEDIUM);
+        assert_eq!(t.font.body.weight, FontWeight::NORMAL);
     }
 }

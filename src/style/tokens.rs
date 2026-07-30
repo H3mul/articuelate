@@ -178,6 +178,7 @@ pub struct FontRole {
 #[allow(dead_code)]
 pub struct FontStyle {
     pub mono_sm: FontRole,
+    pub mono_sm_bold: FontRole,
     pub mono_xl: FontRole,
     pub heading: FontRole,
     pub body_bold: FontRole,

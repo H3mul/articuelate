@@ -4,8 +4,9 @@ use floem::IntoView;
 use floem::peniko::Color;
 use floem::reactive::{Memo, RwSignal, SignalGet, SignalWith};
 
+use floem::style::Position;
 use floem::views::slider::Slider;
-use floem::views::{Button, Clip, Container, Decorators, Empty, Label, Scroll, Stack};
+use floem::views::{Button, Container, Decorators, Empty, Label, Scroll, Stack};
 
 use crate::model::{CueColor, TransientCueState};
 use crate::style::theme;
@@ -77,19 +78,14 @@ fn active_cue_row(tcs: &TransientCueState) -> impl IntoView {
     let levels = (metrics.left_peak() as f64, metrics.right_peak() as f64);
 
     let top_row = Stack::horizontal((
-        Stack::horizontal((Label::derived(move || name.clone()).style(|s| {
+        // Cue Name
+        Label::derived(move || name.clone()).style(|s| {
             s.font_family(theme().font.body.family.clone())
                 .font_size(12.0)
                 .font_weight(floem::text::FontWeight::MEDIUM)
                 .color(theme().color.text_primary)
-                .min_width(0.0)
-        }),))
-        .style(|s| {
-            s.min_width(0.0)
-                .items_center()
-                .gap(theme().dim.space_xs)
-                .flex_grow(1.0)
         }),
+        // Cue Controls
         Stack::horizontal((
             Container::new(app_icon(
                 AppIcon::SkipBack,
@@ -148,14 +144,9 @@ fn active_cue_row(tcs: &TransientCueState) -> impl IntoView {
                     .background(theme().color.element_bg)
             }),
         ))
-        .style(|s| s.flex_shrink(0.0).items_center().gap(theme().dim.space_xs)),
+        .style(|s| s.gap(theme().dim.space_xs)),
     ))
-    .style(|s| {
-        s.flex_row()
-            .width_full()
-            .justify_between()
-            .gap(theme().dim.space_xs)
-    });
+    .style(|s| s.items_center().width_full().justify_between());
 
     let bottom_row = Stack::horizontal((
         Label::derived(move || file.clone()).style(|s| {
@@ -174,27 +165,30 @@ fn active_cue_row(tcs: &TransientCueState) -> impl IntoView {
     ))
     .style(|s| s.width_full().gap(theme().dim.space_xs));
 
-    Clip::new((
-        Container::new(Empty::new()).style(move |s| {
-            s.flex_col()
+    Stack::horizontal((
+        Empty::new().style(move |s| {
+            s.position(Position::Absolute)
+                .inset_top(0.0)
+                .inset_bottom(0.0)
+                .inset_left(0.0)
                 .width(theme().dim.status_border_size)
-                .height_full()
                 .background(stripe_color)
+                .border_top_left_radius(theme().dim.radius_md)
+                .border_bottom_left_radius(theme().dim.radius_md)
         }),
         Stack::horizontal((
-            Stack::vertical((top_row, bottom_row))
-                .style(|s| s.width_full().gap(theme().dim.space_md)),
-            audio_meter(levels.0, levels.1).style(|s| s.padding_vert(theme().dim.space_sm)),
+            Stack::vertical((top_row, bottom_row)).style(|s| s.width_full()),
+            audio_meter(levels.0, levels.1),
         ))
         .style(|s| {
             s.width_full()
                 .gap(theme().dim.space_sm)
                 .padding(theme().dim.space_sm)
+                .padding_left(theme().dim.space_sm + theme().dim.status_border_size)
         }),
     ))
     .style(move |s| {
         s.width_full()
-            // .height(theme().dim.active_card_height)
             .border_radius(theme().dim.radius_md)
             .border(theme().dim.border_size)
             .border_color(theme().color.element_border)
@@ -218,22 +212,17 @@ pub fn view(running_transients: Memo<Vec<TransientCueState>>) -> impl IntoView {
 
     let header = Stack::horizontal((
         Label::derived(|| "Active Cues".to_string()).style(|s| {
-            s.font_family(theme().font.body.family.clone())
-                .font_size(theme().font.body.size)
-                .font_weight(floem::text::FontWeight::SEMI_BOLD)
+            s.font_family(theme().font.heading.family.clone())
+                .font_size(theme().font.heading.size)
+                .font_weight(theme().font.heading.weight)
                 .color(theme().color.text_primary)
-                .min_width(0.0)
         }),
-        // Consume only the space available inside the sidebar so the badge
-        // remains aligned to the parent's right edge.
-        Container::new(Empty::new()).style(|s| s.flex_grow(1.0).min_width(0.0)),
         Label::derived(move || format!("{} running", running_count)).style(|s| {
-            s.flex_shrink(0.0)
-                .border_radius(theme().dim.radius_sm)
+            s.border_radius(theme().dim.radius_sm)
                 .padding(theme().dim.space_sm)
                 .font_family(theme().font.mono_sm.family.clone())
                 .font_size(theme().font.mono_sm.size)
-                .font_weight(floem::text::FontWeight::SEMI_BOLD)
+                .font_weight(theme().font.mono_sm_bold.weight)
                 .background(theme().color.status_running_bg)
                 .color(theme().color.status_running)
         }),
@@ -241,9 +230,7 @@ pub fn view(running_transients: Memo<Vec<TransientCueState>>) -> impl IntoView {
     .style(|s| {
         s.items_center()
             .width_full()
-            .min_width(0.0)
-            .flex_shrink(1.0)
-            .gap(theme().dim.space_sm)
+            .justify_between()
             .padding_horiz(theme().dim.space_md)
             .padding_vert(theme().dim.space_sm)
             .border_bottom(1.0)
