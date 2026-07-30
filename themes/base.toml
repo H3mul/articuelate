@@ -49,6 +49,7 @@ time_cell = 20.0
 min_panel_size = 225.0
 border_size = 1.0
 status_icon_size = 14.0
+status_border_size = 3.0
 
 # Grid Column Widths
 col_playhead = 20.0
@@ -58,7 +59,7 @@ col_time = 70.0
 col_menu = 24.0
 
 # Micro dimensions for LED meters & status pips
-led_dot = 6.0
+led_dot = 5.0
 meter_width_sm = 6.0
 meter_width_md = 8.0
 dot_sm = 8.0

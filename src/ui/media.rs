@@ -5,7 +5,7 @@ use floem::peniko::Color;
 use floem::reactive::{Memo, RwSignal, SignalGet, SignalWith};
 
 use floem::views::slider::Slider;
-use floem::views::{Button, Container, Decorators, Empty, Label, Stack};
+use floem::views::{Button, Clip, Container, Decorators, Empty, Label, Scroll, Stack};
 
 use crate::model::{CueColor, TransientCueState};
 use crate::style::theme;
@@ -58,7 +58,7 @@ fn active_cue_row(tcs: &TransientCueState) -> impl IntoView {
     let cue = tcs.workspace.get();
     let metrics = tcs.read_audio_telemetry();
 
-    let _stripe_color = match cue.color {
+    let stripe_color = match cue.color {
         CueColor::None => theme().color.status_playhead,
         CueColor::Red => theme().color.status_error,
         CueColor::Orange => theme().color.status_group,
@@ -151,49 +151,54 @@ fn active_cue_row(tcs: &TransientCueState) -> impl IntoView {
         .style(|s| s.flex_shrink(0.0).items_center().gap(theme().dim.space_xs)),
     ))
     .style(|s| {
-        s.flex_shrink(0.0)
-            .items_center()
+        s.flex_row()
+            .width_full()
             .justify_between()
             .gap(theme().dim.space_xs)
     });
 
     let bottom_row = Stack::horizontal((
-        Stack::horizontal((
-            Label::derived(move || file.clone()).style(|s| {
-                s.min_width(0.0)
-                    .flex_grow(1.0)
-                    .font_family(theme().font.mono_sm.family.clone())
-                    .font_size(theme().font.mono_sm.size)
-                    .color(theme().color.text_disabled)
-            }),
-            Label::derived(move || format!("{} -{}", duration, remaining)).style(|s| {
-                s.flex_shrink(0.0)
-                    .font_family(theme().font.mono_sm.family.clone())
-                    .font_size(theme().font.mono_sm.size)
-                    .color(theme().color.text_disabled)
-            }),
-        ))
-        .style(|s| {
+        Label::derived(move || file.clone()).style(|s| {
             s.min_width(0.0)
                 .flex_grow(1.0)
-                .items_center()
-                .gap(theme().dim.space_xs)
+                .font_family(theme().font.mono_sm.family.clone())
+                .font_size(theme().font.mono_sm.size)
+                .color(theme().color.text_disabled)
         }),
-        audio_meter(levels.0, levels.1),
+        Label::derived(move || format!("{} -{}", duration, remaining)).style(|s| {
+            s.flex_shrink(0.0)
+                .font_family(theme().font.mono_sm.family.clone())
+                .font_size(theme().font.mono_sm.size)
+                .color(theme().color.text_disabled)
+        }),
     ))
-    .style(|s| s.flex_row().items_center().gap(6.0).width_full());
+    .style(|s| s.width_full().gap(theme().dim.space_xs));
 
-    Stack::vertical((top_row, bottom_row)).style(move |s| {
-        s.flex_col()
-            .gap(6.0)
-            .height(theme().dim.active_card_height)
-            .border_radius(theme().dim.radius_sm)
-            .border(1.0)
+    Clip::new((
+        Container::new(Empty::new()).style(move |s| {
+            s.flex_col()
+                .width(theme().dim.status_border_size)
+                .height_full()
+                .background(stripe_color)
+        }),
+        Stack::horizontal((
+            Stack::vertical((top_row, bottom_row))
+                .style(|s| s.width_full().gap(theme().dim.space_md)),
+            audio_meter(levels.0, levels.1).style(|s| s.padding_vert(theme().dim.space_sm)),
+        ))
+        .style(|s| {
+            s.width_full()
+                .gap(theme().dim.space_sm)
+                .padding(theme().dim.space_sm)
+        }),
+    ))
+    .style(move |s| {
+        s.width_full()
+            // .height(theme().dim.active_card_height)
+            .border_radius(theme().dim.radius_md)
+            .border(theme().dim.border_size)
             .border_color(theme().color.element_border)
             .background(theme().color.element_bg_hover)
-            .padding_horiz(theme().dim.space_sm)
-            .padding_top(theme().dim.space_xs)
-            .border_left(3.0)
     })
 }
 
@@ -357,20 +362,18 @@ pub fn view(running_transients: Memo<Vec<TransientCueState>>) -> impl IntoView {
         .map(|tcs| active_cue_row(tcs).into_any())
         .collect::<Vec<_>>();
 
-    let cue_list = (Stack::vertical_from_iter(cue_rows)
-        .style(|s| s.flex_col().gap(theme().dim.space_sm)))
-    .style(|s| {
-        s.flex_grow(1.0)
+    let cue_list = Scroll::new(Stack::vertical_from_iter(cue_rows).style(|s| {
+        s.width_full()
+            .gap(theme().dim.space_sm)
             .min_height(0.0)
-            .padding(theme().dim.space_sm)
-    });
+            .padding_vert(theme().dim.space_xs)
+            .padding_left(theme().dim.space_md)
+    }));
 
     Stack::vertical((header, controls_with_meter, cue_list)).style(|s| {
-        s.flex_col()
-            .width_full()
-            .flex_shrink(0.0)
-            .background(theme().color.bg_surface)
+        s.width_full()
             .height_full()
+            .background(theme().color.bg_surface)
             .min_height(0.0)
     })
 }

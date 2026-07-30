@@ -50,60 +50,57 @@ fn de_color<'de, D: serde::Deserializer<'de>>(d: D) -> Result<Color, D::Error> {
     let s = s.strip_prefix('#').unwrap_or(s);
     let (r, g, b, a) = match s.len() {
         3 => {
-            let r = u8::from_str_radix(&s[0..1], 16).map_err(|_| {
-                serde::de::Error::custom(format!("invalid colour `{s}`"))
-            })? * 17;
-            let g = u8::from_str_radix(&s[1..2], 16).map_err(|_| {
-                serde::de::Error::custom(format!("invalid colour `{s}`"))
-            })? * 17;
-            let b = u8::from_str_radix(&s[2..3], 16).map_err(|_| {
-                serde::de::Error::custom(format!("invalid colour `{s}`"))
-            })? * 17;
+            let r = u8::from_str_radix(&s[0..1], 16)
+                .map_err(|_| serde::de::Error::custom(format!("invalid colour `{s}`")))?
+                * 17;
+            let g = u8::from_str_radix(&s[1..2], 16)
+                .map_err(|_| serde::de::Error::custom(format!("invalid colour `{s}`")))?
+                * 17;
+            let b = u8::from_str_radix(&s[2..3], 16)
+                .map_err(|_| serde::de::Error::custom(format!("invalid colour `{s}`")))?
+                * 17;
             (r, g, b, 255)
         }
         4 => {
-            let r = u8::from_str_radix(&s[0..1], 16).map_err(|_| {
-                serde::de::Error::custom(format!("invalid colour `{s}`"))
-            })? * 17;
-            let g = u8::from_str_radix(&s[1..2], 16).map_err(|_| {
-                serde::de::Error::custom(format!("invalid colour `{s}`"))
-            })? * 17;
-            let b = u8::from_str_radix(&s[2..3], 16).map_err(|_| {
-                serde::de::Error::custom(format!("invalid colour `{s}`"))
-            })? * 17;
-            let a = u8::from_str_radix(&s[3..4], 16).map_err(|_| {
-                serde::de::Error::custom(format!("invalid colour `{s}`"))
-            })? * 17;
+            let r = u8::from_str_radix(&s[0..1], 16)
+                .map_err(|_| serde::de::Error::custom(format!("invalid colour `{s}`")))?
+                * 17;
+            let g = u8::from_str_radix(&s[1..2], 16)
+                .map_err(|_| serde::de::Error::custom(format!("invalid colour `{s}`")))?
+                * 17;
+            let b = u8::from_str_radix(&s[2..3], 16)
+                .map_err(|_| serde::de::Error::custom(format!("invalid colour `{s}`")))?
+                * 17;
+            let a = u8::from_str_radix(&s[3..4], 16)
+                .map_err(|_| serde::de::Error::custom(format!("invalid colour `{s}`")))?
+                * 17;
             (r, g, b, a)
         }
         6 => {
-            let r = u8::from_str_radix(&s[0..2], 16).map_err(|_| {
-                serde::de::Error::custom(format!("invalid colour `{s}`"))
-            })?;
-            let g = u8::from_str_radix(&s[2..4], 16).map_err(|_| {
-                serde::de::Error::custom(format!("invalid colour `{s}`"))
-            })?;
-            let b = u8::from_str_radix(&s[4..6], 16).map_err(|_| {
-                serde::de::Error::custom(format!("invalid colour `{s}`"))
-            })?;
+            let r = u8::from_str_radix(&s[0..2], 16)
+                .map_err(|_| serde::de::Error::custom(format!("invalid colour `{s}`")))?;
+            let g = u8::from_str_radix(&s[2..4], 16)
+                .map_err(|_| serde::de::Error::custom(format!("invalid colour `{s}`")))?;
+            let b = u8::from_str_radix(&s[4..6], 16)
+                .map_err(|_| serde::de::Error::custom(format!("invalid colour `{s}`")))?;
             (r, g, b, 255)
         }
         8 => {
-            let r = u8::from_str_radix(&s[0..2], 16).map_err(|_| {
-                serde::de::Error::custom(format!("invalid colour `{s}`"))
-            })?;
-            let g = u8::from_str_radix(&s[2..4], 16).map_err(|_| {
-                serde::de::Error::custom(format!("invalid colour `{s}`"))
-            })?;
-            let b = u8::from_str_radix(&s[4..6], 16).map_err(|_| {
-                serde::de::Error::custom(format!("invalid colour `{s}`"))
-            })?;
-            let a = u8::from_str_radix(&s[6..8], 16).map_err(|_| {
-                serde::de::Error::custom(format!("invalid colour `{s}`"))
-            })?;
+            let r = u8::from_str_radix(&s[0..2], 16)
+                .map_err(|_| serde::de::Error::custom(format!("invalid colour `{s}`")))?;
+            let g = u8::from_str_radix(&s[2..4], 16)
+                .map_err(|_| serde::de::Error::custom(format!("invalid colour `{s}`")))?;
+            let b = u8::from_str_radix(&s[4..6], 16)
+                .map_err(|_| serde::de::Error::custom(format!("invalid colour `{s}`")))?;
+            let a = u8::from_str_radix(&s[6..8], 16)
+                .map_err(|_| serde::de::Error::custom(format!("invalid colour `{s}`")))?;
             (r, g, b, a)
         }
-        _ => return Err(serde::de::Error::custom(format!("invalid colour format `{s}`"))),
+        _ => {
+            return Err(serde::de::Error::custom(format!(
+                "invalid colour format `{s}`"
+            )));
+        }
     };
     Ok(Color::from_rgba8(r, g, b, a))
 }
@@ -203,6 +200,7 @@ pub struct DimStyle {
 
     pub status_bar_height: f64,
     pub status_icon_size: f64,
+    pub status_border_size: f64,
     pub toolbar_height: f64,
 
     pub radius_sm: f64,
