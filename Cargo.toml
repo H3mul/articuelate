@@ -5,6 +5,10 @@ edition = "2024"
 default-run = "articuelate"
 description = "Articuelate - a native, Floem-based audio cue system inspired by Lapce"
 
+[features]
+default = ["debug-ui"]
+debug-ui = ["dep:serde_json"]
+
 [dependencies]
 floem = { git = "https://github.com/lapce/floem", rev = "778bb5", features = ["tokio", "crossbeam"] }
 fastrand = "2"
@@ -18,6 +22,7 @@ toml = "0.8"
 uuid = { version = "1.24.0", features = ["v7", "serde"] }
 serde = { version = "1.0.229", features = ["derive", "rc"] }
 yaml_serde = "0.10.4"
+serde_json = { version = "1.0.151", optional = true }
 arc-swap = "1.9.2"
 crossbeam-channel = "0.5.16"
 notify = { version = "7", default-features = false, features = ["macos_kqueue"] }

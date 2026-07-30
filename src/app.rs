@@ -17,6 +17,7 @@ use tokio::sync::watch;
 use tracing::{debug, info};
 
 use crate::audio::AudioEngine;
+use crate::devtools::DebugInspectorExt;
 use crate::exec::ExecutionHandle;
 use crate::model::{
     AppState, ExecutionState, PlaybackStatus, Playhead, TransientCueState, WorkspaceState,
@@ -119,7 +120,7 @@ impl App {
 
         Application::new()
             .window(
-                move |_| {
+                move |_| -> _ {
                     let exec_state_signal_r = RwSignal::new(None::<Arc<ExecutionState>>);
                     update_signal_from_channel(exec_state_signal_r.write_only(), exec_state_rx);
 
@@ -153,6 +154,7 @@ impl App {
                     )
                     // Make the base view fill the window
                     .style(|s| s.size_full().min_size(0.0, 0.0))
+                    .attach_inspector()
                 },
                 Some(
                     WindowConfig::default()

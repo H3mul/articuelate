@@ -2,6 +2,7 @@
 
 mod app;
 mod audio;
+mod devtools;
 mod exec;
 mod model;
 mod style;
