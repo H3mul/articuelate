@@ -10,10 +10,10 @@ default = ["debug-ui"]
 debug-ui = ["dep:serde_json"]
 
 [dependencies]
-floem = { git = "https://github.com/lapce/floem", rev = "778bb5", features = ["tokio", "crossbeam"] }
+floem = { git = "https://github.com/h3mul/floem", rev = "530aac", features = ["tokio", "crossbeam"] }
 fastrand = "2"
 im = "15"
-lucide-floem = { git = "https://github.com/H3mul/lucide-floem.git", rev = "333af3b" }
+lucide-floem = { git = "https://github.com/H3mul/lucide-floem.git", rev = "51c6203" }
 tokio = { version = "1", features = ["macros", "rt", "rt-multi-thread", "sync", "time"] }
 cpal = "0.15"
 ringbuf = "0.4"
@@ -33,4 +33,4 @@ tracing = "0.1"
 tracing-subscriber = { version = "0.3", default-features = false, features = ["env-filter", "fmt"] }
 
 [patch.crates-io]
-floem = { git = "https://github.com/lapce/floem", rev = "778bb5" }
+floem = { git = "https://github.com/h3mul/floem", rev = "530aac7" }
