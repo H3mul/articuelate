@@ -216,6 +216,7 @@ pub fn view(running_transients: Memo<Vec<TransientCueState>>) -> impl IntoView {
                 .font_size(theme().font.heading.size)
                 .font_weight(theme().font.heading.weight)
                 .color(theme().color.text_primary)
+                .flex_shrink(0.0)
         }),
         Label::derived(move || format!("{} running", running_count)).style(|s| {
             s.border_radius(theme().dim.radius_sm)
@@ -225,6 +226,7 @@ pub fn view(running_transients: Memo<Vec<TransientCueState>>) -> impl IntoView {
                 .font_weight(theme().font.mono_sm_bold.weight)
                 .background(theme().color.status_running_bg)
                 .color(theme().color.status_running)
+                .flex_shrink(0.0)
         }),
     ))
     .style(|s| {
@@ -354,7 +356,7 @@ pub fn view(running_transients: Memo<Vec<TransientCueState>>) -> impl IntoView {
             .gap(theme().dim.space_sm)
             .min_height(0.0)
             .padding_vert(theme().dim.space_xs)
-            .padding_left(theme().dim.space_md)
+            .padding_left(theme().dim.space_xs)
     }));
 
     Stack::vertical((header, controls_with_meter, cue_list)).style(|s| {

@@ -196,7 +196,6 @@ pub struct DimStyle {
     pub space_xl: f64,
 
     pub height_cue_row: f64,
-    pub min_panel_size: f64,
     pub border_size: f64,
 
     pub status_bar_height: f64,

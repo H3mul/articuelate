@@ -10,6 +10,7 @@ use floem::views::Decorators;
 use lucide_floem::Icon;
 
 /// All icons used in the application, mapped from the prototype's `AppIconName`.
+#[allow(dead_code)]
 pub enum AppIcon {
     // Transport
     Play,

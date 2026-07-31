@@ -52,7 +52,6 @@ toolbar_height = 36.0
 control_sm = 28.0
 control_md = 32.0
 time_cell = 20.0
-min_panel_size = 225.0
 border_size = 1.0
 status_icon_size = 14.0
 status_border_size = 3.0
@@ -71,8 +70,8 @@ meter_width_md = 8.0
 dot_sm = 8.0
 
 # Panel Structural Dimensions
-sidebar_width = 320.0
-detail_height = 256.0
+sidebar_width = 400.0
+detail_height = 250.0
 active_card_height = 80.0
 btn_go_width = 96.0
 btn_panic_width = 96.0

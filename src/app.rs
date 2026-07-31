@@ -256,24 +256,20 @@ fn app_view(
         });
     }
 
+    let main_view = Stack::vertical((
+        toolbar::view(execution, active_transient, next_transient),
+        cuelist::view(cuelist_memo, app_state.clone()),
+    ))
+    .style(|s| s.width_full().height_full().min_width(0.0));
+    let sidebar_view = media::view(running_transients);
+    let detail_view = detail::view(selected_transient);
+
     let panel_system = PanelSystem::new();
     let panel = panel_system
         .builder()
-        .with_main(move || {
-            Stack::vertical((
-                toolbar::view(execution.clone(), active_transient, next_transient),
-                cuelist::view(cuelist_memo, app_state.clone()),
-            ))
-            .style(|s| s.size_full().min_width(0.0))
-        })
-        .with_right(
-            move || media::view(running_transients),
-            Some(theme().dim.sidebar_width as f32),
-        )
-        .with_bottom(
-            move || detail::view(selected_transient),
-            Some(theme().dim.detail_height as f32),
-        )
+        .with_main(main_view)
+        .with_right(sidebar_view, Some(theme().dim.sidebar_width as f32))
+        .with_bottom(detail_view, Some(theme().dim.detail_height as f32))
         .build();
 
     let status_bar_view =
