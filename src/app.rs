@@ -256,28 +256,33 @@ fn app_view(
         });
     }
 
-    let cuelist_view = cuelist::view(cuelist_memo, app_state.clone());
-    let toolbar_view = toolbar::view(execution, active_transient, next_transient);
-    let detail_view = detail::view(selected_transient);
-    let sidebar_view = media::view(running_transients);
-    let status_bar_view = status_bar::view(selected_count_rw.get_untracked(), cue_count);
-
-    // Left column: toolbar + cuelist
-    let main_view = Stack::vertical((toolbar_view, cuelist_view))
-        .style(|s| s.flex_col().min_width(0.0).flex_grow(1.0).height_full());
-
-    let panel = PanelSystem::new()
+    let panel_system = PanelSystem::new();
+    let panel = panel_system
         .builder()
-        .with_main(main_view)
-        .with_right(sidebar_view, Some(theme().dim.sidebar_width as f32))
-        .with_bottom(detail_view, Some(theme().dim.detail_height as f32))
+        .with_main(move || {
+            Stack::vertical((
+                toolbar::view(execution.clone(), active_transient, next_transient),
+                cuelist::view(cuelist_memo, app_state.clone()),
+            ))
+            .style(|s| s.size_full().min_width(0.0))
+        })
+        .with_right(
+            move || media::view(running_transients),
+            Some(theme().dim.sidebar_width as f32),
+        )
+        .with_bottom(
+            move || detail::view(selected_transient),
+            Some(theme().dim.detail_height as f32),
+        )
         .build();
+
+    let status_bar_view =
+        status_bar::view(selected_count_rw.get_untracked(), cue_count, panel_system);
 
     Stack::vertical((panel, status_bar_view))
         .style(|s| {
             s.flex_col()
-                .width_full()
-                .height_full()
+                .size_full()
                 .gap(1.0)
                 .background(theme().color.bg_app)
         })

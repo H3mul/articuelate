@@ -478,10 +478,9 @@ pub fn view(selected_transient: Memo<Option<TransientCueState>>) -> impl IntoVie
     };
 
     Stack::vertical((header, content)).style(|s| {
-        s.flex_col()
-            .height(theme().dim.detail_height)
-            .flex_shrink(0.0)
+        s.width_full()
+            .height_full()
+            .min_size(0.0, 0.0)
             .background(theme().color.bg_surface)
-            .width_full()
     })
 }

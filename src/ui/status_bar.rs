@@ -6,12 +6,14 @@
 use floem::IntoView;
 use floem::views::{Container, Decorators, Empty, Label, Stack};
 
+use crate::style::style::BtnGlobal;
 use crate::style::theme;
+use crate::ui::panel::{PanelLocation, PanelSystem};
 
 use crate::ui::icons::{AppIcon, app_icon};
 
 /// Status bar view.
-pub fn view(selected_count: usize, cue_count: usize) -> impl IntoView {
+pub fn view(selected_count: usize, cue_count: usize, panel_system: PanelSystem) -> impl IntoView {
     // Show timer
     let timer = Stack::horizontal((
         app_icon(
@@ -55,34 +57,16 @@ pub fn view(selected_count: usize, cue_count: usize) -> impl IntoView {
         theme().dim.icon_sm as f32,
         theme().color.text_secondary,
     ))
-    .style(|s| {
-        s.size(theme().dim.space_xl, theme().dim.space_xl)
-            .items_center()
-            .justify_center()
-            .border_radius(theme().dim.radius_sm)
-            .border(1.0)
-            .border_color(theme().color.element_border)
-            .background(theme().color.element_bg)
-            .hover(|s| s.background(theme().color.element_bg_hover))
-            .active(|s| s.background(theme().color.element_bg_active))
-    });
+    .class(BtnGlobal)
+    .style(|s| s.active(|s| s.background(theme().color.element_bg_active)));
 
     let settings_btn = Container::new(app_icon(
         AppIcon::Settings,
         theme().dim.icon_sm as f32,
         theme().color.text_secondary,
     ))
-    .style(|s| {
-        s.size(theme().dim.space_xl, theme().dim.space_xl)
-            .items_center()
-            .justify_center()
-            .border_radius(theme().dim.radius_sm)
-            .border(1.0)
-            .border_color(theme().color.element_border)
-            .background(theme().color.element_bg)
-            .hover(|s| s.background(theme().color.element_bg_hover))
-            .active(|s| s.background(theme().color.element_bg_active))
-    });
+    .class(BtnGlobal)
+    .style(|s| s.active(|s| s.background(theme().color.element_bg_active)));
 
     // Layout label
     let layout_label = Label::derived(|| "Layout".to_string()).style(|s| {
@@ -92,37 +76,27 @@ pub fn view(selected_count: usize, cue_count: usize) -> impl IntoView {
     });
 
     // Layout toggle buttons
-    let columns_btn = Container::new(app_icon(
-        AppIcon::Columns2,
-        theme().dim.icon_sm as f32,
-        theme().color.text_primary,
-    ))
-    .style(|s| {
-        s.size(theme().dim.space_xl, theme().dim.space_xl)
-            .items_center()
-            .justify_center()
-            .border_radius(theme().dim.radius_sm)
-            .border(1.0)
-            .border_color(theme().color.element_border)
-            .background(theme().color.element_bg)
-            .hover(|s| s.background(theme().color.element_bg_hover))
-    });
+    let right_panel = panel_system
+        .panel_toggle_button(
+            app_icon(
+                AppIcon::PanelRight,
+                theme().dim.icon_sm as f32,
+                theme().color.text_primary,
+            ),
+            PanelLocation::Right,
+        )
+        .class(BtnGlobal);
 
-    let rows_btn = Container::new(app_icon(
-        AppIcon::Rows2,
-        theme().dim.icon_sm as f32,
-        theme().color.text_disabled,
-    ))
-    .style(|s| {
-        s.size(theme().dim.space_xl, theme().dim.space_xl)
-            .items_center()
-            .justify_center()
-            .border_radius(theme().dim.radius_sm)
-            .border(1.0)
-            .border_color(theme().color.element_border)
-            .background(theme().color.element_bg)
-            .hover(|s| s.background(theme().color.element_bg_hover))
-    });
+    let bottom_panel = panel_system
+        .panel_toggle_button(
+            app_icon(
+                AppIcon::PanelBottom,
+                theme().dim.icon_sm as f32,
+                theme().color.text_disabled,
+            ),
+            PanelLocation::Bottom,
+        )
+        .class(BtnGlobal);
 
     // Assemble left section
     let left = Stack::horizontal((timer, selection, cue_count_label))
@@ -138,8 +112,8 @@ pub fn view(selected_count: usize, cue_count: usize) -> impl IntoView {
                 .background(theme().color.element_border)
         }),
         layout_label,
-        columns_btn,
-        rows_btn,
+        bottom_panel,
+        right_panel,
     ))
     .style(|s| s.items_center().gap(theme().dim.space_sm));
 
