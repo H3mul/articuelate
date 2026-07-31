@@ -4,8 +4,8 @@
 //! UI never needs to import lucide-floem directly. Icon sizes are bound to
 //! `ThemeDimensions` via the `app_icon` helper.
 
-use floem::IntoView;
 use floem::peniko::Color;
+use floem::view::IntoView;
 use floem::views::Decorators;
 use lucide_floem::Icon;
 

@@ -1120,7 +1120,6 @@ checksum = "98de4bbd547a563b716d8dfa9aad1cb19bfab00f4fa09a6a4ed21dbcf44ce9c4"
 [[package]]
 name = "floem"
 version = "0.2.0"
-source = "git+https://github.com/h3mul/floem?rev=530aac#530aac7a25754f9c2f51eacf2e870d7e90cf5319"
 dependencies = [
  "bitflags 2.13.1",
  "clipboard-win",
@@ -1176,7 +1175,6 @@ dependencies = [
 [[package]]
 name = "floem-editor-core"
 version = "0.2.0"
-source = "git+https://github.com/h3mul/floem?rev=530aac#530aac7a25754f9c2f51eacf2e870d7e90cf5319"
 dependencies = [
  "bitflags 2.13.1",
  "itertools 0.14.0",
@@ -1420,7 +1418,6 @@ dependencies = [
 [[package]]
 name = "floem_reactive"
 version = "0.2.0"
-source = "git+https://github.com/h3mul/floem?rev=530aac#530aac7a25754f9c2f51eacf2e870d7e90cf5319"
 dependencies = [
  "parking_lot",
  "smallvec",
@@ -1429,7 +1426,6 @@ dependencies = [
 [[package]]
 name = "floem_renderer"
 version = "0.2.0"
-source = "git+https://github.com/h3mul/floem?rev=530aac#530aac7a25754f9c2f51eacf2e870d7e90cf5319"
 dependencies = [
  "crossbeam",
  "floem-winit",
@@ -1446,7 +1442,6 @@ dependencies = [
 [[package]]
 name = "floem_tiny_skia_renderer"
 version = "0.2.0"
-source = "git+https://github.com/h3mul/floem?rev=530aac#530aac7a25754f9c2f51eacf2e870d7e90cf5319"
 dependencies = [
  "anyhow",
  "floem_renderer",
@@ -1462,7 +1457,6 @@ dependencies = [
 [[package]]
 name = "floem_vger_renderer"
 version = "0.2.0"
-source = "git+https://github.com/h3mul/floem?rev=530aac#530aac7a25754f9c2f51eacf2e870d7e90cf5319"
 dependencies = [
  "anyhow",
  "floem-vger",
@@ -4789,7 +4783,6 @@ dependencies = [
 [[package]]
 name = "ui-events-floem-winit"
 version = "0.2.0"
-source = "git+https://github.com/h3mul/floem?rev=530aac#530aac7a25754f9c2f51eacf2e870d7e90cf5319"
 dependencies = [
  "dpi 0.1.2 (registry+https://github.com/rust-lang/crates.io-index)",
  "floem-winit",
@@ -5966,8 +5959,3 @@ checksum = "27bc9d5b815bc103f142aa054f561d9187d191692ec7c2d1e2b4737f8dbd7296"
 dependencies = [
  "zune-core",
 ]
-
-[[patch.unused]]
-name = "floem"
-version = "0.2.0"
-source = "git+https://github.com/h3mul/floem?rev=530aac7#530aac7a25754f9c2f51eacf2e870d7e90cf5319"

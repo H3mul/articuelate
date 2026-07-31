@@ -51,7 +51,7 @@ To maximize token efficiency and preserve your attention mechanism across deep p
 
 # **Floem & Taffy Layout Guide for Autonomous AI Agents**
 
-> **CRITICAL DIRECTIVE FOR LLMs / AGENTS:** > > > \> Floem wraps the **Taffy** flexbox engine, but its styling API (Style) differs from CSS and web Tailwind paradigms. Follow these strict rules to avoid common compilation errors, redundant styles, and Taffy layout blowouts.
+> **CRITICAL DIRECTIVE FOR LLMs / AGENTS:** > > > > > \> Floem wraps the **Taffy** flexbox engine, but its styling API (Style) differs from CSS and web Tailwind paradigms. Follow these strict rules to avoid common compilation errors, redundant styles, and Taffy layout blowouts.
 
 ## **1\. Flexbox Anti-Patterns & Hallucinations**
 
@@ -65,7 +65,7 @@ To maximize token efficiency and preserve your attention mechanism across deep p
 
 - **Hallucination:** Adding .flex\_col() to Stack::vertical(...) or .flex\_row() to Stack::horizontal(...).
 - **Reality:** Stack::vertical and Stack::horizontal already set the Taffy FlexDirection internally. Calling .flex\_col() or .flex\_row() is completely redundant and clutters the styling chain.
-- **Rule:** Only use flex\_col() / flex\_row() if you are constructing a generic container() or dyn\_container() from scratch without a Stack.
+- **Rule:** Only use flex\_col() / flex\_row() if you are constructing any container that doesn't have an initial orientation like a Stack.
 
 ## **2\. Dynamic Sizing & Layout Expansion Rules**
 

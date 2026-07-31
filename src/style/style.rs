@@ -3,6 +3,7 @@
 use floem::style::{CursorStyle, Style};
 use floem::style_class;
 use floem::views::ButtonClass;
+use floem::views::resizable::{ResizableCustomStyle, ResizableHandleClass};
 use floem::views::scroll::{ScrollClass, ScrollCustomStyle};
 
 use crate::style::theme::theme;
@@ -108,22 +109,29 @@ style_class!(pub StatusBarButton);
 ///
 /// These styles are applied once and cascade to all matching views.
 pub fn global_stylesheet(s: Style) -> Style {
-    s// ─── Base Application Styles ───────────────────────────────────────
-        .background(theme().color.bg_app)
+    // ─── Base Application Styles ───────────────────────────────────────
+    s.background(theme().color.bg_app)
         .color(theme().color.text_primary)
         .font_size(theme().font.body.size)
         .font_family(theme().font.body.family.clone())
         .selectable(false)
         .size_full()
         .min_size(0.0, 0.0)
-
         // ─── Scrollbar ─────────────────────────────────────────────────
         .class(ScrollClass, |s| {
-            s.size_full()
-                .min_size(0.0, 0.0)
-                .apply_custom(ScrollCustomStyle::new().handle_background(theme().color.border_subtle))
+            s.size_full().min_size(0.0, 0.0).apply_custom(
+                ScrollCustomStyle::new().handle_background(theme().color.border_subtle),
+            )
         })
-
+        .class(ResizableHandleClass, |s| {
+            s.apply_custom(
+                ResizableCustomStyle::new()
+                    .handle_color(theme().color.border_subtle)
+                    .active(|s| s.handle_color(theme().color.bg_selection))
+                    .hover(|s| s.handle_color(theme().color.bg_selection_active))
+                    .handle_thickness(theme().dim.border_size),
+            )
+        })
         // ─── Cuelist Grid ──────────────────────────────────────────────
         .class(CueRowGrid, |s| {
             s.grid()
@@ -138,13 +146,9 @@ pub fn global_stylesheet(s: Style) -> Style {
                 .font_size(theme().font.body.size)
                 .outline(0.0)
                 .min_size(0.0, 0.0)
-                .focus_visible(|s| {
-                    s.border(1.0).border_color(theme().color.border_focus)
-                })
+                .focus_visible(|s| s.border(1.0).border_color(theme().color.border_focus))
         })
-        .class(CueRowGridEven, |s| {
-            s.background(theme().color.bg_surface)
-        })
+        .class(CueRowGridEven, |s| s.background(theme().color.bg_surface))
         .class(CueRowGridOdd, |s| {
             s.background(theme().color.bg_surface_raised)
         })
@@ -156,9 +160,7 @@ pub fn global_stylesheet(s: Style) -> Style {
             s.background(theme().color.status_running_bg_20)
                 .color(theme().color.text_primary)
         })
-        .class(CueRowGridDisabled, |s| {
-            s
-        })
+        .class(CueRowGridDisabled, |s| s)
         .class(CueRowGridGroup, |s| {
             s.border_left(3.0).border_color(theme().color.status_group)
         })
@@ -166,7 +168,8 @@ pub fn global_stylesheet(s: Style) -> Style {
             s.background(theme().color.status_error_bg_12)
         })
         .class(CueRowGridStandby, |s| {
-            s.border_left(3.0).border_color(theme().color.status_standby)
+            s.border_left(3.0)
+                .border_color(theme().color.status_standby)
         })
         .class(CuelistHeader, |s| {
             s.grid()
@@ -190,14 +193,12 @@ pub fn global_stylesheet(s: Style) -> Style {
                 .color(theme().color.text_disabled)
                 .hover(|s| s.color(theme().color.text_secondary))
         })
-
         // ─── Panels & Environment ──────────────────────────────────────
         .class(PanelSurface, |s| {
             s.background(theme().color.bg_surface)
                 .border(1.0)
                 .border_color(theme().color.border_subtle)
         })
-
         // ─── Punch-Down Button ─────────────────────────────────────────
         .class(BtnPunchDown, |s| {
             s.flex()
@@ -216,7 +217,6 @@ pub fn global_stylesheet(s: Style) -> Style {
                 })
                 .focus_visible(|s| s.border_color(theme().color.border_focus))
         })
-
         // ─── Icon Buttons ──────────────────────────────────────────────
         .class(BtnIconSm, |s| {
             s.flex()
@@ -264,7 +264,6 @@ pub fn global_stylesheet(s: Style) -> Style {
                 })
                 .focus_visible(|s| s.border_color(theme().color.border_focus))
         })
-
         // ─── Panic Button ──────────────────────────────────────────────
         .class(BtnPanic, |s| {
             s.flex()
@@ -287,7 +286,6 @@ pub fn global_stylesheet(s: Style) -> Style {
                 })
                 .focus_visible(|s| s.border_color(theme().color.status_error))
         })
-
         // ─── Go Button ─────────────────────────────────────────────────
         .class(BtnGo, |s| {
             s.flex()
@@ -310,7 +308,6 @@ pub fn global_stylesheet(s: Style) -> Style {
                 })
                 .focus_visible(|s| s.border_color(theme().color.status_running))
         })
-
         // ─── Conductor Panel ───────────────────────────────────────────
         .class(ConductorCurrent, |s| {
             s.flex()
@@ -337,7 +334,6 @@ pub fn global_stylesheet(s: Style) -> Style {
                 .padding_vert(6.0)
                 .padding_horiz(theme().dim.space_md)
         })
-
         // ─── Labels & Typography ───────────────────────────────────────
         .class(LabelMonoSm, |s| {
             s.font_family(theme().font.mono_sm.family.clone())
@@ -374,19 +370,10 @@ pub fn global_stylesheet(s: Style) -> Style {
                 .font_weight(floem::text::FontWeight::SEMI_BOLD)
                 .color(theme().color.text_disabled)
         })
-        .class(TextMonoSm, |s| {
-            s.font_size(theme().font.mono_sm.size)
-        })
-        .class(TextMonoXl, |s| {
-            s.font_size(theme().font.mono_xl.size)
-        })
-        .class(TextBody, |s| {
-            s.font_size(theme().font.body.size)
-        })
-        .class(TextHeading, |s| {
-            s.font_size(theme().font.heading.size)
-        })
-
+        .class(TextMonoSm, |s| s.font_size(theme().font.mono_sm.size))
+        .class(TextMonoXl, |s| s.font_size(theme().font.mono_xl.size))
+        .class(TextBody, |s| s.font_size(theme().font.body.size))
+        .class(TextHeading, |s| s.font_size(theme().font.heading.size))
         // ─── Form Elements ─────────────────────────────────────────────
         .class(FieldInput, |s| {
             s.height(theme().dim.control_sm)
@@ -438,7 +425,6 @@ pub fn global_stylesheet(s: Style) -> Style {
                 .color(theme().color.text_disabled)
                 .margin_bottom(theme().dim.space_xs)
         })
-
         // ─── Tab Classes ───────────────────────────────────────────────
         .class(TabBtn, |s| {
             s.flex()
@@ -486,7 +472,6 @@ pub fn global_stylesheet(s: Style) -> Style {
                 })
                 .focus_visible(|s| s.border_color(theme().color.border_focus))
         })
-
         // ─── Badges ────────────────────────────────────────────────────
         .class(BadgeSm, |s| {
             s.border_radius(theme().dim.radius_sm)
@@ -504,10 +489,7 @@ pub fn global_stylesheet(s: Style) -> Style {
             s.background(theme().color.status_running_bg)
                 .color(theme().color.status_running)
         })
-        .class(BadgeChip, |s| {
-            s.min_width(68.0)
-        })
-
+        .class(BadgeChip, |s| s.min_width(68.0))
         // ─── Time Cell ─────────────────────────────────────────────────
         .class(TimeCell, |s| {
             s.flex()
@@ -537,7 +519,6 @@ pub fn global_stylesheet(s: Style) -> Style {
                 .color(theme().color.text_disabled)
                 .min_width(0.0)
         })
-
         // ─── Active Cue Row ────────────────────────────────────────────
         .class(ActiveCueRow, |s| {
             s.flex()
@@ -564,7 +545,6 @@ pub fn global_stylesheet(s: Style) -> Style {
                 .color(theme().color.text_primary)
                 .min_width(0.0)
         })
-
         // ─── Global Runtime Buttons ────────────────────────────────────
         .class(BtnGlobal, |s| {
             s.flex()
@@ -599,7 +579,6 @@ pub fn global_stylesheet(s: Style) -> Style {
                 })
                 .focus_visible(|s| s.border_color(theme().color.status_error))
         })
-
         // ─── LED Meter & Level Indicators ──────────────────────────────
         .class(LedDot, |s| {
             s.height(theme().dim.led_dot)
@@ -609,16 +588,9 @@ pub fn global_stylesheet(s: Style) -> Style {
                 .border_color(theme().color.element_border)
                 .background(theme().color.element_bg)
         })
-        .class(LedDotLit, |s| {
-            s
-        })
-        .class(MeterTrackSm, |s| {
-            s.width(theme().dim.meter_width_sm)
-        })
-        .class(MeterTrackMd, |s| {
-            s.width(theme().dim.meter_width_md)
-        })
-
+        .class(LedDotLit, |s| s)
+        .class(MeterTrackSm, |s| s.width(theme().dim.meter_width_sm))
+        .class(MeterTrackMd, |s| s.width(theme().dim.meter_width_md))
         // ─── Device Status Chip ────────────────────────────────────────
         .class(DeviceChip, |s| {
             s.flex()
@@ -641,12 +613,10 @@ pub fn global_stylesheet(s: Style) -> Style {
                 .flex_shrink(0.0)
                 .border_radius(theme().dim.radius_full)
         })
-
         // ─── Divider ───────────────────────────────────────────────────
         .class(DividerVert, |s| {
             s.width(1.0).background(theme().color.element_border)
         })
-
         // ─── Sidebar Runtime ────────────────────────────────────────
         .class(SidebarRuntime, |s| {
             s.flex_col()
@@ -656,7 +626,6 @@ pub fn global_stylesheet(s: Style) -> Style {
                 .height_full()
                 .min_height(0.0)
         })
-
         // ─── Detail Panel ────────────────────────────────────────────
         .class(DetailPanel, |s| {
             s.flex()
@@ -665,14 +634,10 @@ pub fn global_stylesheet(s: Style) -> Style {
                 .background(theme().color.bg_surface)
                 .width_full()
         })
-
         // ─── Transport Group ─────────────────────────────────────────
         .class(TransportGroup, |s| {
-            s.flex_col()
-                .flex_shrink(0.0)
-                .gap(theme().dim.space_sm)
+            s.flex_col().flex_shrink(0.0).gap(theme().dim.space_sm)
         })
-
         // ─── Status Bar Button ─────────────────────────────────────────
         .class(StatusBarButton, |s| {
             s.color(theme().color.text_secondary)
@@ -685,10 +650,8 @@ pub fn global_stylesheet(s: Style) -> Style {
                 .hover(|s| s.background(theme().color.element_bg_hover))
                 .active(|s| s.background(theme().color.element_bg_active))
         })
-
         // ─── Default Button ────────────────────────────────────────────
         .class(ButtonClass, |s| apply_interactable_base_styles(s))
-
         // ─── BtnAddCueEnd ──────────────────────────────────────────────
         .class(BtnAddCueEnd, |s| {
             apply_interactable_base_styles(s)

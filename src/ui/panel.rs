@@ -16,16 +16,11 @@
 //! └───────┴───────────────────────┴───────────┘
 //! ```
 
-use floem::event::{EventPropagation, listener};
-use floem::kurbo::{Point, Size};
-use floem::reactive::{RwSignal, SignalGet, SignalUpdate, SignalWith};
-use floem::style::{AlignItems, CursorStyle};
-use floem::taffy::Display;
-use floem::views::scroll::Scroll;
-use floem::views::{Button, Container, Decorators, Empty, Stack};
-use floem::{AnyView, IntoView, View};
-
-use crate::style::theme;
+use floem::reactive::{RwSignal, SignalUpdate, SignalWith};
+use floem::style::Display;
+use floem::views::resizable::Resizable;
+use floem::views::{Container, Decorators, Empty};
+use floem::{AnyView, IntoView};
 
 /// Where a registered window lives in the workspace.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -33,14 +28,6 @@ pub enum PanelLocation {
     Left,
     Right,
     Bottom,
-}
-
-/// Pixel sizes of the resizable panels.
-#[derive(Clone, Copy, Default)]
-pub struct PanelSizes {
-    pub left: f64,
-    pub right: f64,
-    pub bottom: f64,
 }
 
 /// Visibility of the optional panels (Main is always shown).
@@ -54,23 +41,15 @@ pub struct PanelFlags {
 /// Builder / owner of the panel layout.
 #[derive(Clone, Copy)]
 pub struct PanelSystem {
-    sizes: RwSignal<PanelSizes>,
     active: RwSignal<PanelFlags>,
     visible: RwSignal<PanelFlags>,
-    available_size: RwSignal<Size>,
 }
 
 impl PanelSystem {
     pub fn new() -> Self {
         PanelSystem {
-            sizes: RwSignal::new(PanelSizes {
-                left: theme().dim.min_panel_size,
-                right: theme().dim.min_panel_size,
-                bottom: theme().dim.min_panel_size,
-            }),
             active: RwSignal::new(PanelFlags::default()),
             visible: RwSignal::new(PanelFlags::default()),
-            available_size: RwSignal::new(Size::ZERO),
         }
     }
 
@@ -80,11 +59,14 @@ impl PanelSystem {
 }
 
 pub struct PanelSystemBuilder {
-    pub handle: PanelSystem, // Wraps the handle
+    pub handle: PanelSystem,
     main: Option<AnyView>,
     left: Option<AnyView>,
     right: Option<AnyView>,
     bottom: Option<AnyView>,
+    left_width: Option<f64>,
+    right_width: Option<f64>,
+    bottom_height: Option<f64>,
 }
 
 impl PanelSystemBuilder {
@@ -95,6 +77,9 @@ impl PanelSystemBuilder {
             left: None,
             right: None,
             bottom: None,
+            left_width: None,
+            right_width: None,
+            bottom_height: None,
         }
     }
 
@@ -106,53 +91,35 @@ impl PanelSystemBuilder {
     }
 
     /// Register the left panel with an optional initial width.
-    ///
-    /// When `width` is `None`, the panel starts at `min_panel_size`.
     #[allow(dead_code)]
     pub fn with_left(mut self, view: impl IntoView + 'static, width: Option<f32>) -> Self {
-        self.handle.sizes.update(|sizes| {
-            sizes.left = width
-                .map(f64::from)
-                .unwrap_or_else(|| theme().dim.min_panel_size);
-        });
+        self.left_width = width.map(f64::from);
         self.left = Some(view.into_any());
         self
     }
 
     /// Register the right panel with an optional initial width.
-    ///
-    /// When `width` is `None`, the panel starts at `min_panel_size`.
     #[allow(dead_code)]
     pub fn with_right(mut self, view: impl IntoView + 'static, width: Option<f32>) -> Self {
-        self.handle.sizes.update(|sizes| {
-            sizes.right = width
-                .map(f64::from)
-                .unwrap_or_else(|| theme().dim.min_panel_size);
-        });
+        self.right_width = width.map(f64::from);
         self.right = Some(view.into_any());
         self
     }
 
     /// Register the bottom panel with an optional initial height.
-    ///
-    /// When `height` is `None`, the panel starts at `min_panel_size`.
     #[allow(dead_code)]
     pub fn with_bottom(mut self, view: impl IntoView + 'static, height: Option<f32>) -> Self {
-        self.handle.sizes.update(|sizes| {
-            sizes.bottom = height
-                .map(f64::from)
-                .unwrap_or_else(|| theme().dim.min_panel_size);
-        });
+        self.bottom_height = height.map(f64::from);
         self.bottom = Some(view.into_any());
         self
     }
 
-    /// Assemble the full workspace view: toolbar on top, panels in the middle,
-    /// status bar at the bottom.
+    /// Assemble the full workspace view.
     pub fn build(self) -> impl IntoView {
-        let sizes = self.handle.sizes;
         let visible = self.handle.visible;
-        let available_size = self.handle.available_size;
+        let _left_width = self.left_width;
+        let _right_width = self.right_width;
+        let _bottom_height = self.bottom_height;
 
         let start_flags = PanelFlags {
             left: self.left.is_some(),
@@ -163,68 +130,34 @@ impl PanelSystemBuilder {
         self.handle.active.update(|a| *a = start_flags);
         self.handle.visible.update(|a| *a = start_flags);
 
-        sizes.update(|s| {
-            if self.left.is_none() {
-                s.left = 0.0;
-            }
-            if self.right.is_none() {
-                s.right = 0.0;
-            }
-            if self.bottom.is_none() {
-                s.bottom = 0.0;
-            }
-        });
-
         let main = self
             .main
             .expect("PanelSystem::build requires a Main window");
 
-        let main_view = Container::new(main.into_view()).style(|s| {
-            // A definite zero width makes this a genuine remaining-space flex item.
-            // The submitted view must not contribute its intrinsic width to layout.
-            s.width_full()
-                .height_full()
-                .flex_grow(1.0)
-                .flex_shrink(1.0)
-                .flex_basis(0.0)
-                .min_size(0.0, 0.0)
-        });
+        let main_view = Container::new(main.into_view())
+            .style(|s| s.width_full().height_full().min_size(0.0, 0.0));
 
-        let left_view = self.left.map_or_else(
-            || Empty::new().into_any(),
-            |v| panel_container(PanelLocation::Left, v, sizes, visible, available_size).into_any(),
-        );
-        let right_view = self.right.map_or_else(
-            || Empty::new().into_any(),
-            |v| panel_container(PanelLocation::Right, v, sizes, visible, available_size).into_any(),
-        );
-        let bottom_view = self.bottom.map_or_else(
-            || Empty::new().into_any(),
-            |v| {
-                panel_container(PanelLocation::Bottom, v, sizes, visible, available_size).into_any()
-            },
-        );
+        // Build the centre row: left panel | main | right panel
+        let center_row = if self.left.is_some() || self.right.is_some() {
+            let left_view = panel_view(self.left, PanelLocation::Left, visible);
+            let right_view = panel_view(self.right, PanelLocation::Right, visible);
 
-        let center_row = Stack::horizontal((left_view, main_view, right_view)).style(|s| {
-            s.flex_row()
-                .flex_grow(1.0)
-                .min_height(0.0)
-                .height_full()
-                .width_full()
-        });
+            Resizable::new((left_view, main_view, right_view))
+                .style(|s| s.width_full().height_full().min_height(0.0))
+                .into_any()
+        } else {
+            main_view.into_any()
+        };
 
-        Stack::vertical((center_row, bottom_view))
-            .style(|s| {
-                s.flex_col()
-                    .flex_grow(1.0)
-                    .flex_basis(0.0)
-                    .min_height(0.0)
-                    .height_full()
-                    .width_full()
-            })
-            .on_event(listener::WindowResized, move |_cx, _size| {
-                EventPropagation::Continue
-            })
+        // if let Some(bottom) = self.bottom {
+        //     let bottom_view = panel_view(Some(bottom), PanelLocation::Bottom, visible);
+        //     Resizable::new((center_row, bottom_view))
+        //         .style(|s| s.flex_col().width_full().height_full().min_height(0.0))
+        //         .into_any()
+        // } else {
+        //     center_row.into_any()
+        // }
+        center_row.into_any()
     }
 }
 
@@ -239,185 +172,23 @@ impl PanelSystem {
     pub fn active(&self) -> RwSignal<PanelFlags> {
         self.active
     }
-
-    /// A small chevron/panel icon that toggles an optional panel.
-    #[allow(dead_code)]
-    pub fn panel_toggle_button(
-        self,
-        child_view: impl IntoView + 'static,
-        which: PanelLocation,
-    ) -> impl IntoView {
-        let active = self.active;
-        let visible = self.visible;
-
-        let hide = move || {
-            active.with(|v| match which {
-                PanelLocation::Left => !v.left,
-                PanelLocation::Right => !v.right,
-                PanelLocation::Bottom => !v.bottom,
-            })
-        };
-
-        let button_active = move || {
-            visible.with(|v| match which {
-                PanelLocation::Left => v.left,
-                PanelLocation::Right => v.right,
-                PanelLocation::Bottom => v.bottom,
-            })
-        };
-
-        Button::new(child_view)
-            .action(move || {
-                visible.update(|v| match which {
-                    PanelLocation::Left => v.left = !v.left,
-                    PanelLocation::Right => v.right = !v.right,
-                    PanelLocation::Bottom => v.bottom = !v.bottom,
-                })
-            })
-            .style(move |s| {
-                s.apply_if(hide(), |s| s.display(Display::None))
-                    .apply_if(button_active(), |s| s.color(theme().color.status_playhead))
-            })
-    }
 }
 
-/// Build a single panel container (with optional drag handle + collapse).
-fn panel_container(
+/// Wrap an optional panel view with scroll + visibility toggle.
+fn panel_view(
+    view: Option<AnyView>,
     location: PanelLocation,
-    content: impl IntoView + 'static,
-    sizes: RwSignal<PanelSizes>,
     visible: RwSignal<PanelFlags>,
-    available_size: RwSignal<Size>,
-) -> impl View {
-    let handle = resize_handle(location, sizes, available_size);
-
-    let content = Container::new(Scroll::new(content.into_view())).style(|s| {
-        s.flex_grow(1.0)
-            .min_size(0.0, 0.0)
-            .width_full()
-            .height_full()
-            .align_items(AlignItems::Stretch)
-    });
-
-    let inner: AnyView = match location {
-        PanelLocation::Left => Stack::horizontal((content, handle))
-            .style(|s| s.size_full().min_size(0.0, 0.0))
-            .into_any(),
-        PanelLocation::Right => Stack::horizontal((handle, content))
-            .style(|s| s.size_full().min_size(0.0, 0.0))
-            .into_any(),
-        PanelLocation::Bottom => Stack::vertical((handle, content))
-            .style(|s| {
-                s.size_full()
-                    .min_size(0.0, 0.0)
-                    .align_items(AlignItems::Stretch)
-            })
-            .into_any(),
-    };
-
+) -> AnyView {
     let is_shown = move || match location {
         PanelLocation::Left => visible.with(|v| v.left),
         PanelLocation::Right => visible.with(|v| v.right),
         PanelLocation::Bottom => visible.with(|v| v.bottom),
     };
 
-    Container::new(inner).style(move |s| {
-        let bw: f32 = 1.0;
-        let s = s.apply_if(!is_shown(), |s| s.display(floem::style::Display::None));
-
-        match location {
-            PanelLocation::Left => s
-                .width(sizes.with(|x| x.left as f32))
-                .height_full()
-                .min_height(0.0)
-                .flex_shrink(1.0)
-                .flex_grow(0.0)
-                .border_right(bw)
-                .border_color(theme().color.border_subtle)
-                .background(theme().color.bg_surface),
-            PanelLocation::Right => s
-                .width(sizes.with(|x| x.right as f32))
-                .height_full()
-                .min_height(0.0)
-                .flex_shrink(1.0)
-                .flex_grow(0.0)
-                .border_left(bw)
-                .border_color(theme().color.border_subtle)
-                .background(theme().color.bg_surface),
-            PanelLocation::Bottom => s
-                .height(sizes.with(|x| x.bottom as f32))
-                .width_full()
-                .min_width(0.0)
-                .flex_shrink(1.0)
-                .flex_grow(0.0)
-                .align_items(AlignItems::Stretch)
-                .border_top(bw)
-                .border_color(theme().color.border_subtle)
-                .background(theme().color.bg_surface),
-        }
-    })
-}
-
-/// A thin, in-flow drag handle that resizes its owning panel.
-fn resize_handle(
-    location: PanelLocation,
-    sizes: RwSignal<PanelSizes>,
-    available_size: RwSignal<Size>,
-) -> impl View {
-    let drag_start: RwSignal<Option<Point>> = RwSignal::new(None);
-
-    let view = Empty::new();
-    let _view_id = view.id();
-    view.on_event_stop(listener::PointerDown, move |_cx, event| {
-        drag_start.set(Some(event.state.logical_point()));
-    })
-    .on_event_stop(listener::PointerMove, move |_cx, event| {
-        if let Some(drag_start_point) = drag_start.get_untracked() {
-            let available_size = available_size.get_untracked();
-            let current_sizes = sizes.get_untracked();
-            let pos = event.current.logical_point();
-
-            let new = match location {
-                PanelLocation::Left => {
-                    let new_size = current_sizes.left - pos.x + drag_start_point.x;
-                    new_size.clamp(
-                        theme().dim.min_panel_size,
-                        (available_size.width - current_sizes.right)
-                            .max(theme().dim.min_panel_size),
-                    )
-                }
-                PanelLocation::Right => {
-                    let new_size = current_sizes.right - pos.x + drag_start_point.x;
-                    new_size.clamp(
-                        theme().dim.min_panel_size,
-                        (available_size.width - current_sizes.left).max(theme().dim.min_panel_size),
-                    )
-                }
-                PanelLocation::Bottom => {
-                    let new_size = current_sizes.bottom - pos.y + drag_start_point.y;
-                    new_size.clamp(
-                        theme().dim.min_panel_size,
-                        (available_size.height - 0.0).max(theme().dim.min_panel_size),
-                    )
-                }
-            };
-            sizes.update(|sizes| match location {
-                PanelLocation::Left => sizes.left = new,
-                PanelLocation::Right => sizes.right = new,
-                PanelLocation::Bottom => sizes.bottom = new,
-            });
-        }
-    })
-    .on_event_stop(listener::PointerUp, move |_cx, _event| {
-        drag_start.set(None);
-    })
-    .style(move |s| {
-        s.cursor(CursorStyle::ColResize)
-            .apply_if(drag_start.get_untracked().is_some(), |s| {
-                s.selectable(false)
-            })
-            .min_size(0.0, 0.0)
-            .flex_shrink(0.0)
-            .hover(|s| s.background(theme().color.border_focus))
-    })
+    if let Some(view) = view {
+        view.style(move |s| s.apply_if(!is_shown(), |s| s.display(Display::None)))
+    } else {
+        Empty::new().into_any()
+    }
 }
